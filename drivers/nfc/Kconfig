@@ -49,6 +49,16 @@ config NFC_PORT100
 
 	  If unsure, say N.
 
+config NFC_ST25DV
+	tristate "Support for ST25DV Chip"
+	depends on NFC_DIGITAL
+	---help---
+	  This module is a simple driver to drive the ST25DV eeprom. The ST25DV is 
+	  a EEPROM readable and writeable by i2c and also by wireless Near Field 
+	  Communication (NFC). Because the EEPROM can also be write by NFC, no cache 
+	  of the eeprom is done, to get the right data even if a write has been done 
+	  by NFC.
+
 source "drivers/nfc/fdp/Kconfig"
 source "drivers/nfc/pn544/Kconfig"
 source "drivers/nfc/pn533/Kconfig"
@@ -59,4 +69,5 @@ source "drivers/nfc/st-nci/Kconfig"
 source "drivers/nfc/nxp-nci/Kconfig"
 source "drivers/nfc/s3fwrn5/Kconfig"
 source "drivers/nfc/st95hf/Kconfig"
+
 endmenu
