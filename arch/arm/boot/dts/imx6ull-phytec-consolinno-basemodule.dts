@@ -73,6 +73,10 @@
 	status = "okay";
 };
 
+&uart3 {
+	status = "okay";
+};
+
 &uart5 {
 	status = "okay";
 };
