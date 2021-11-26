@@ -96,3 +96,13 @@
 &usdhc2 {
 	status = "okay";
 };
+
+&i2c1 {
+
+	eepromnfc@53 {
+		compatible = "st25dv,st25dv04k";
+		reg = <0x53>;
+		status = "okay";
+	};
+};
+
