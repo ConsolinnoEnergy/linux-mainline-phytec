@@ -126,6 +126,7 @@
 	phy-mode = "rmii";
 	phy-handle = <&ethphy2>;
 	status = "disabled";
+
 };
 
 &i2c1 {
@@ -320,6 +321,8 @@
 			MX6UL_PAD_GPIO1_IO00__ANATOP_OTG1_ID	0x17059
 		>;
 	};
+
+
 
 	pinctrl_usdhc1: usdhc1grp {
 		fsl,pins = <
