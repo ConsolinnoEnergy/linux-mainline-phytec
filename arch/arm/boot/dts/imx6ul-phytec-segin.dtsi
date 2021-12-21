@@ -222,8 +222,6 @@
 };
 
 &usbotg2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usb_otg2_id>;
 	dr_mode = "host";
 	disable-over-current;
 	status = "disabled";
@@ -328,11 +326,7 @@
 		>;
 	};
 
-	pinctrl_usb_otg2_id: usbotg2idgrp {
-		fsl,pins = <
-			MX6UL_PAD_SD1_DATA3__ANATOP_OTG2_ID	0x17059
-		>;
-	};
+
 
 	pinctrl_usdhc1: usdhc1grp {
 		fsl,pins = <
