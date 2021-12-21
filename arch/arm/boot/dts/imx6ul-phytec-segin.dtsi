@@ -126,6 +126,7 @@
 	phy-mode = "rmii";
 	phy-handle = <&ethphy2>;
 	status = "disabled";
+
 };
 
 &i2c1 {
@@ -182,6 +183,8 @@
 		micrel,led-mode = <1>;
 		clocks = <&clks IMX6UL_CLK_ENET2_REF>;
 		clock-names = "rmii-ref";
+		interrupt-parent = <&gpio4>;
+		interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
 		status = "disabled";
 	};
 };
@@ -262,6 +265,8 @@
 			MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00	0x1b010
 			MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01	0x1b010
 			MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b010
+			/* INT# */
+			MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x1b0b0
 		>;
 	};
 
