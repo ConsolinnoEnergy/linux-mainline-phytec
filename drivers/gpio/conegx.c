@@ -19,6 +19,12 @@
  * 
  */
 
+/*This enables some Prints and IRQ Testing for powerfail and voltagerange.
+when enabled triggering MRES irqs will simulate IRQS for powerfail and 
+voltagerange
+*/
+//#define CONEGX_TESTING
+
 #include "conegx.h"
 
 #include <linux/cdev.h>
@@ -54,12 +60,14 @@ static struct cdev *ConDriverObject;
 static wait_queue_head_t IrSleepingQeue;
 static int InterruptArrived = 0;
 static int VoltageInterruptArrived = 0;
+static int PowerFailInterruptArrived = 0;
 
 /* Proc FS */
 static struct proc_dir_entry *ProcfsParent;
 
 /* Function Prototypes */
 static int conegx_getVoltageRange(void);
+static int conegx_getPowerFail(void);
 
 /*---------------GPIO Functions---------------*/
 static int conegx_get_direction(struct gpio_chip *chip, unsigned offset);
@@ -70,9 +78,12 @@ static int conegx_direction_input(struct gpio_chip *chip, unsigned offset);
 static int conegx_direction_output(struct gpio_chip *chip, unsigned offset,
                                    int val);
 /*---------------PROCFS Functions---------------*/
-static ssize_t read_proc_rms(struct file *filp, char __user *buffer,
-                             size_t length, loff_t *offset);
+static ssize_t read_proc_powerfail(struct file *filp, char __user *buffer,
+                               size_t length, loff_t *offset);
 
+static ssize_t read_proc_powerfailirq(struct file *filp, char __user *buffer,
+                                  size_t length, loff_t *offset);
+                                  
 static ssize_t read_proc_range(struct file *filp, char __user *buffer,
                                size_t length, loff_t *offset);
 
@@ -387,75 +398,135 @@ static struct file_operations fops_devfile = {
 /**
  * @brief File Operation Struct for /proc/conegx/tstbuttonlock
  */
-static struct proc_ops proc_fops_tstbuttonlock = {
+static struct file_operations proc_fops_tstbuttonlock = {
 
-    .proc_read = read_proc_tstbuttonlock,
-    .proc_write = write_proc_tstbuttonlock,
+    .read = read_proc_tstbuttonlock,
+    .write = write_proc_tstbuttonlock,
 
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/rstbuttonlock
  */
-static struct proc_ops proc_fops_rstbuttonlock = {
+static struct file_operations proc_fops_rstbuttonlock = {
 
-    .proc_read = read_proc_rstbuttonlock,
-    .proc_write = write_proc_rstbuttonlock,
+    .read = read_proc_rstbuttonlock,
+    .write = write_proc_rstbuttonlock,
 
 };
 /**
  * @brief File Operation Struct for /proc/conegx/relaydefault
  */
-static struct proc_ops proc_fops_relaydefault = {
+static struct file_operations proc_fops_relaydefault = {
 
-    .proc_read = read_proc_relaydefault,
-    .proc_write = write_proc_relaydefault,
+    .read = read_proc_relaydefault,
+    .write = write_proc_relaydefault,
 
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/fwversion
  */
-static struct proc_ops proc_fops_fwversion = {
+static struct file_operations proc_fops_fwversion = {
 
-    .proc_read = read_proc_fwversion,
+    .read = read_proc_fwversion,
 
 };
 /**
- * @brief File Operation Struct for /proc/conegx/voltagerms
+ * @brief File Operation Struct for /proc/conegx/powerfail
  */
-static struct proc_ops proc_fops_rms = {
+static struct file_operations proc_fops_powerfail = {
 
-    .proc_read = read_proc_rms,
+    .read = read_proc_powerfail,
 
 };
+/**
+ * @brief File Operation Struct for /proc/conegx/powerfailirq
+ */
+static struct file_operations proc_fops_powerfailirq = {
+    
+    .read = read_proc_powerfailirq,
 
+};
 /**
  * @brief File Operation Struct for /proc/conegx/voltagerange
  */
-static struct proc_ops proc_fops_range = {
-    .proc_read = read_proc_range,
+static struct file_operations proc_fops_range = {
+    .read = read_proc_range,
 
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/voltagerangeirq
  */
-static struct proc_ops proc_fops_rangeirq = {
-    .proc_read = read_proc_rangeirq,
+static struct file_operations proc_fops_rangeirq = {
+    .read = read_proc_rangeirq,
 
 };
 
 /**
- * @brief Read Function  for /proc/conegx/voltagerms
+ * @brief Read Function  for /proc/conegx/powerfail
  */
-static ssize_t read_proc_rms(struct file *filp, char __user *buffer,
+static ssize_t read_proc_powerfail(struct file *filp, char __user *buffer,
                              size_t length, loff_t *offset) {
-    /* TODO: calculate Voltage RMS from ADC val*/
+    char PowerFailChar[2];
+    int BytesRead;
+    int BytesToRead = 2 - *offset;
 
-    return 0;
+    PowerFailChar[0] = (char)(Conegx->PowerFail + '0');
+    PowerFailChar[1] = (char)('\n');
+
+    // If we are at the end of the file, STOP READING!
+    if (BytesToRead == 0) {
+        return BytesToRead;
+    }
+
+    // Get bytes read by subtracting return of copy_to_user (returns unread bytes)
+    BytesRead = BytesToRead - copy_to_user(buffer, PowerFailChar + *offset,
+                                           BytesToRead);
+    pr_info("conegx: Reading %d bytes Voltage Range: %c\n", BytesRead,
+            PowerFailChar[0]);
+
+    // Set offset so that we can eventually reach the end of the file
+    *offset += BytesRead;
+    return BytesRead;
 }
 
+/**
+ * @brief Read Function  for /proc/conegx/powerfailirq
+ */
+static ssize_t read_proc_powerfailirq(struct file *filp, char __user *buffer,
+                                  size_t length, loff_t *offset) {
+    char PowerFailChar[2];
+    int BytesRead;
+    int BytesToRead = 2 - *offset;
+
+    PowerFailChar[0] = (char)(Conegx->PowerFail + '0');
+    PowerFailChar[1] = (char)('\n');
+
+    // If we are at the end of the file, STOP READING!
+    if (BytesToRead == 0) {
+        return BytesToRead;
+    }
+
+    /* Wait for Change */
+    pr_info("conegx: Someone is now listening to PowerFailIRQ\n");
+    Conegx->IRQPowerFailEnabled = 1;
+    PowerFailInterruptArrived = 0;
+    wait_event_interruptible(IrSleepingQeue, PowerFailInterruptArrived);
+
+    // Get bytes read by subtracting return of copy_to_user (returns unread bytes)
+    BytesRead = BytesToRead - copy_to_user(buffer, PowerFailChar + *offset,
+                                           BytesToRead);
+
+    pr_info("conegx: Reading %d bytes Voltage Range: %c\n", BytesRead,
+            PowerFailChar[0]);
+
+    // Set offset so that we can eventually reach the end of the file
+    *offset += BytesRead;
+    Conegx->IRQPowerFailEnabled = 0;
+    return BytesRead;
+}
 /**
  * @brief Read Function for /proc/conegx/voltagerange
  */
@@ -814,8 +885,12 @@ static irqreturn_t conegx_irq(int irq, void *data) {
                     conegx_gpio_names[GpioNumber]);
         }
 
-        /* This wakeup is just for testing */
+        /* This wakeups are just for testing */
+        #ifdef CONEGX_TESTING
         VoltageInterruptArrived += 1;
+        PowerFailInterruptArrived += 1;      
+        #endif // DEBUG
+        
 
         //#ifdef GPIOLIB_IRQCHIP
         /* Trigger nested IRQ for GPIOS */
@@ -826,17 +901,22 @@ static irqreturn_t conegx_irq(int irq, void *data) {
         //#endif
     }
     /* Voltage IRQ -------------------------*/
-    else if (VOLTAGE_ALERT_INTERRUPT || VOLTAGE_NORMAL_INTERRUPT)
-    {
+    else if (IrqNumber == VOLTAGE_ALERT_INTERRUPT ||
+             IrqNumber == VOLTAGE_NORMAL_INTERRUPT) {
         conegx_getVoltageRange();
         VoltageInterruptArrived += 1;
     }
-
-    if (Conegx->IRQDeviceFileEnabled || Conegx->IRQVoltageRangeEnabled) {
+    /* Power Fail IRQ -------------------------*/
+    else if (POWER_FAILURE_INTERUPT) {
+        conegx_getVoltageRange();
+        PowerFailInterruptArrived += 1;
+    }
+    /* Check if any IRQ is enabled and wake up Sleeping Queue */
+    if (Conegx->IRQDeviceFileEnabled || Conegx->IRQVoltageRangeEnabled ||
+        Conegx->IRQPowerFailEnabled) {
         InterruptArrived += 1;
         wake_up(&IrSleepingQeue);
     }
-    printk("end of IRQ\n");
     return IRQ_HANDLED;
 }
 /* LED -----------------------------------------------------------------------*/
@@ -932,6 +1012,29 @@ static int setup_leds(struct i2c_client *client) {
 }
 
 /**
+ * @brief Getter for Power Fail
+ */
+static int conegx_getPowerFail(void) {
+    /* Read Voltage Range */
+    int Ret;
+    int Val;
+
+    mutex_lock(&Conegx->lock);
+    Ret = regmap_read(Conegx->regmap, GET_POWER_FAILURE, &Val);
+    if (Ret < 0) {
+        printk(KERN_ERR "conegx: can't read GET_POWER_FAILURE Register\n");
+        return Ret;
+    } 
+    else 
+    {
+        Conegx->PowerFail=Val & 0x1;
+        pr_info("conegx: Powerfail: %d \n", Conegx->PowerFail);
+    }
+    mutex_unlock(&Conegx->lock);
+    return 0;
+}
+
+/**
  * @brief Getter for Voltage Range
  */
 static int conegx_getVoltageRange(void) {
@@ -944,11 +1047,23 @@ static int conegx_getVoltageRange(void) {
     if (Ret < 0) {
         printk(KERN_ERR "conegx: can't read GET_VOLTAGE_PORT Register\n");
         return Ret;
-    } else {
-        while (Val) {
-            Val = Val >> 0x1;
-            Conegx->VoltageRange++;
+    } 
+    else 
+    {
+        if (Val== 0x1)
+        {   
+            Conegx->VoltageRange=0;
         }
+        else if(Val == 0x2)
+        {
+            Conegx->VoltageRange=1;
+        }
+        else
+        {
+            printk(KERN_ERR "conegx: undefined value in GET_VOLTAGE_PORT Register\n");
+            return -1;
+        }
+        
 
         pr_info("conegx: VoltageRange: %d \n", Conegx->VoltageRange);
     }
@@ -1070,6 +1185,9 @@ static int conegx_probe(struct i2c_client *client) {
     unsigned int Val;
     unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_RISING;
 
+    #ifdef CONEGX_TESTING
+    printk("conegx: Loaded in Testmode");
+    #endif // DEBUG
     printk("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
 
     Conegx = devm_kzalloc(&client->dev, sizeof(*Conegx), GFP_KERNEL);
@@ -1158,6 +1276,9 @@ static int conegx_probe(struct i2c_client *client) {
     /* Mirror the Current Register states from conegx Device */
     if (conegx_getVoltageRange())
         return -1;
+    
+    if (conegx_getPowerFail())
+        return -1;
 
     Ret = conegx_getRegister();
 
@@ -1173,7 +1294,8 @@ static int conegx_probe(struct i2c_client *client) {
     }
 
     /*Creating Proc entry under "/proc/etx/" */
-    proc_create("voltagerms", 0444, ProcfsParent, &proc_fops_rms);
+    proc_create("powerfail", 0444, ProcfsParent, &proc_fops_powerfail);
+    proc_create("powerfailirq", 0444, ProcfsParent, &proc_fops_powerfailirq);
     proc_create("voltagerange", 0444, ProcfsParent, &proc_fops_range);
     proc_create("voltagerangeirq", 0444, ProcfsParent, &proc_fops_rangeirq);
     proc_create("fwversion", 0444, ProcfsParent, &proc_fops_fwversion);
@@ -1206,7 +1328,7 @@ static int conegx_probe(struct i2c_client *client) {
     if (IS_ERR(ConDevice))
         goto free_class;
 
-    dev_info(ConDevice, "mod_init");
+    //dev_info(ConDevice, "mod_init");
 
     /* Set OS Ready flag ----------------------------------------------------*/
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
@@ -1230,8 +1352,11 @@ free_device_number:
  * @brief Remove Function called when the module is unloaded
  */
 static int conegx_remove(struct i2c_client *client) {
-    printk("conegx: Removing...\n");
-
+    printk("conegx: Removing...-> disabling OS_READY flag\n");
+    int Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
+    if (Ret) {
+        printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
+    }
     proc_remove(ProcfsParent);
     unregister_leds(NR_OF_LEDS);
     mutex_destroy(&Conegx->lock);
@@ -1265,5 +1390,5 @@ static struct i2c_driver conegx_driver = {
 module_i2c_driver(conegx_driver);
 
 MODULE_AUTHOR("Alexander Pietsch <a.pietsch@consolinno.de>");
-MODULE_DESCRIPTION("Driver for  Consolinno Conegx");
+MODULE_DESCRIPTION("Driver for Consolinno Conegx");
 MODULE_LICENSE("GPL v2");
