@@ -245,7 +245,7 @@ struct conegx
 
 	/* Device Status Info */
 	uint LastInterruptNr;
-	int VoltageRms;
+	int PowerFail;
 	int VoltageRange;
 	char FwVersion[12];
 	int RelayDefaultSetting;
@@ -253,6 +253,7 @@ struct conegx
 	int RstButtonLock;
 	int IRQDeviceFileEnabled;
 	int IRQVoltageRangeEnabled;
+	int IRQPowerFailEnabled;
 };
 
 
