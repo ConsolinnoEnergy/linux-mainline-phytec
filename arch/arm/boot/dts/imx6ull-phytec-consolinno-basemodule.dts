@@ -19,6 +19,11 @@
 	model = "PHYTEC phyBOARD-Segin i.MX6 ULL Full Featured with eMMC";
 	compatible = "phytec,imx6ull-pbacd10-emmc", "phytec,imx6ull-pbacd10",
 		     "phytec,imx6ull-pcl063","fsl,imx6ull";
+
+	aliases {
+		mmc0 = &usdhc1; /* uSD / MMC  */
+		mmc1 = &usdhc2; /* internal eMMC */
+	};
 };
 
 &adc1 {
@@ -147,6 +152,12 @@
 };
 
 &usdhc2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc2>;
+	bus-width = <8>;
+	no-1-8-v;
+	non-removable;
+	keep-power-in-suspend;
 	status = "okay";
 };
 
