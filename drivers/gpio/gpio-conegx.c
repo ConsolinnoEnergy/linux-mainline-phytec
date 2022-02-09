@@ -1,5 +1,5 @@
 /**
- * @file conegx.c
+ * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
  * @version 0.2
