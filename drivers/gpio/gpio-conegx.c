@@ -1,8 +1,8 @@
 /**
- * @file gpio-conegx.c
+ * @file conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 0.1
+ * @version 0.2
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -23,7 +23,6 @@
 when enabled triggering MRES irqs will simulate IRQS for powerfail and 
 voltagerange
 */
-
 //#define CONEGX_TESTING
 
 #include "gpio-conegx.h"
@@ -342,12 +341,12 @@ static int conegx_direction_output(struct gpio_chip *chip,
         }
 
         mutex_unlock(&Conegx->lock);
-        return conegx_set_gpio(offset, val);
+        
     } else if (IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) {
         return -1;
-    } else {
-        return 0;
     }
+    // set actual gpio values
+    return conegx_set_gpio(offset, val);
 }
 /*---------------FS-----------------------------------------------------------*/
 
@@ -866,7 +865,7 @@ static irqreturn_t conegx_irq(int irq, void *data) {
     pr_info("conegx: IRQ detected. Interrupt Nr.: %d\n", IrqNumber);
 
     /* GPIO INTERRUPTS -------------------*/
-    if (IrqNumber >= POTENTIAL_FREE_INPUT_1_RISING_EDGE ||
+    if (IrqNumber >= POTENTIAL_FREE_INPUT_1_RISING_EDGE &&
         IrqNumber <= MRES_S2_FALLING_EDGE) {
         /* Get Gpio Number and Edge from IRQ Number */
         GpioNumber = conegx_gpio_irq_map[IrqNumber -
@@ -1353,8 +1352,10 @@ free_device_number:
  * @brief Remove Function called when the module is unloaded
  */
 static int conegx_remove(struct i2c_client *client) {
+
+    int Ret;
     printk("conegx: Removing...-> disabling OS_READY flag\n");
-    int Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
+    Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
     if (Ret) {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
     }
