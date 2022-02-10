@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 0.2
+ * @version 0.3
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -1194,6 +1194,7 @@ static int conegx_probe(struct i2c_client *client) {
     #ifdef CONEGX_TESTING
     printk("conegx: Loaded in Testmode");
     #endif // DEBUG
+    printk("conegx: Driver Version: %s",DRIVER_VERSION);
     printk("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
 
     Conegx = devm_kzalloc(&client->dev, sizeof(*Conegx), GFP_KERNEL);
@@ -1252,7 +1253,7 @@ static int conegx_probe(struct i2c_client *client) {
     Err = gpiochip_irqchip_add_nested(&Conegx->chip,
                                       &Conegx->irq_chip,
                                       0,
-                                      handle_simple_irq,
+                                      handle_edge_irq,
                                       IRQ_TYPE_NONE);
 
     Conegx->chip.irq.threaded = true;
