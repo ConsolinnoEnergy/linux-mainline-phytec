@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 0.4
+ * @version 0.0.5
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -161,7 +161,6 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset) {
     uint Buffer;
     int Ret = 0;
     int RegisterAdress = 0;
-    int RegisterOffset =0;
 
     Buffer = 0;
 
@@ -176,27 +175,27 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset) {
     /* read GET HBUS PINS */
     else if (IO_MRES_M2 <= offset && offset <= IO_MRES_S1) {
         RegisterAdress = GET_HBUS_PORT;
-        RegisterOffset = offset - IO_MRES_M2;
+        offset -= IO_MRES_M2;
     }
     /* read GET INPUT PINS */
     else if (IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) {
         RegisterAdress = GET_INPUT_PORT;
-        RegisterOffset = offset - IO_FLT_HBUS24;
+        offset -= IO_FLT_HBUS24;
     } else {
         return -1;
     }
 
     mutex_lock(&Conegx->lock);
-    pr_info("conegx: Reading Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
     Ret = regmap_read(Conegx->regmap, RegisterAdress, &Buffer);
-        if (Ret) {
-        printk(KERN_ERR "conegx: Reading Register 0x%x\n", RegisterAdress);
+    pr_info("conegx: Reading Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
+    if (Ret) {
+        printk(KERN_ERR "conegx: Error reading conegx gpio %d\n", offset);
         mutex_unlock(&Conegx->lock);
         return Ret;
     }
 
     mutex_unlock(&Conegx->lock);
-    return !!(Buffer & BIT(RegisterOffset));
+    return !!(Buffer & BIT(offset));
 }
 
 /**
@@ -230,7 +229,7 @@ static int conegx_set_gpio(unsigned offset, int value) {
         InternalRegisterOffset = offset - IO_MRES_M2;
     }
 
-    mutex_lock(&Conegx->lock);
+    
 
     /* Modify Bits in Buffer */
     if (value)
@@ -239,14 +238,15 @@ static int conegx_set_gpio(unsigned offset, int value) {
         Buffer &= ~BIT(InternalRegisterOffset);
 
     /* Write buffer to Register */
+    mutex_lock(&Conegx->lock);
     Ret = regmap_write(Conegx->regmap, RegisterAdress, Buffer);
     pr_info("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
     if (Ret) {
         printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
                RegisterAdress);
-
-        return -1;
         mutex_unlock(&Conegx->lock);
+        return -1;
+        
     } else {
         /* Update RegisterBuffer */
         *RegisterBuffer = Buffer;
@@ -290,17 +290,18 @@ static int conegx_direction_input(struct gpio_chip *chip, unsigned offset) {
         /* Shit Offset to internal Bits */
         offset -= IO_MRES_M2;
 
-        mutex_lock(&Conegx->lock);
-
+        
         /* Set Bit to 0 for Input */
         Conegx->SetHbusDirectionBuffer &= ~BIT(offset);
 
+        mutex_lock(&Conegx->lock);
         /* Write buffer to Register */
         Ret = regmap_write(Conegx->regmap, SET_HBUS_DIRECTION,
                            Conegx->SetHbusDirectionBuffer);
 
         if (Ret) {
             pr_info("conegx: setting direction failed\n");
+            mutex_unlock(&Conegx->lock);
             return -1;
         }
 
@@ -309,8 +310,8 @@ static int conegx_direction_input(struct gpio_chip *chip, unsigned offset) {
     
     }
     
-    return conegx_get_gpio(chip,offset);
-    
+    //return conegx_get_gpio(chip,offset);
+    return 0;
 }
 
 /**
@@ -330,7 +331,7 @@ static int conegx_direction_output(struct gpio_chip *chip,
             offset, conegx_gpio_names[offset]);
 
     if (IO_MRES_M2 <= offset && offset <= IO_MRES_S1) {
-        mutex_lock(&Conegx->lock);
+        
 
         /* Shit Offset to internal Bits */
         InternalRegisterOffset = offset - IO_MRES_M2;
@@ -338,12 +339,15 @@ static int conegx_direction_output(struct gpio_chip *chip,
         /* Set Bit to 1 for Output */
         Conegx->SetHbusDirectionBuffer |= BIT(InternalRegisterOffset);
 
+        mutex_lock(&Conegx->lock);
+
         /* Write Direction to Register */
         Ret = regmap_write(Conegx->regmap, SET_HBUS_DIRECTION,
                            Conegx->SetHbusDirectionBuffer);
 
         if (Ret) {
             pr_info("conegx: direction setting failed\n");
+            mutex_unlock(&Conegx->lock);
             return -1;
         }
 
@@ -1030,6 +1034,7 @@ static int conegx_getPowerFail(void) {
     Ret = regmap_read(Conegx->regmap, GET_POWER_FAILURE, &Val);
     if (Ret < 0) {
         printk(KERN_ERR "conegx: can't read GET_POWER_FAILURE Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     } 
     else 
@@ -1053,10 +1058,13 @@ static int conegx_getVoltageRange(void) {
     Ret = regmap_read(Conegx->regmap, GET_VOLTAGE_PORT, &Val);
     if (Ret < 0) {
         printk(KERN_ERR "conegx: can't read GET_VOLTAGE_PORT Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     } 
     else 
     {
+        mutex_unlock(&Conegx->lock);
+
         if (Val== 0x1)
         {   
             Conegx->VoltageRange=0;
@@ -1074,7 +1082,7 @@ static int conegx_getVoltageRange(void) {
 
         pr_info("conegx: VoltageRange: %d \n", Conegx->VoltageRange);
     }
-    mutex_unlock(&Conegx->lock);
+    
     return 0;
 }
 
@@ -1138,16 +1146,19 @@ static int conegx_getRegister(void) {
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MAJOR, &FwVersionMaj);
     if (Ret) {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MAJOR Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     }
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MINOR_1, &FwVersionMin);
     if (Ret) {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MINOR_1 Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     }
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MINOR_2, &FwVersionPatch);
     if (Ret) {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MINOR_2 Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     }
 
@@ -1163,6 +1174,7 @@ static int conegx_getRegister(void) {
 
     if (Ret) {
         printk(KERN_ERR "conegx: can't read GET_DEFAULT_PARAMETER Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     }
 
@@ -1172,6 +1184,7 @@ static int conegx_getRegister(void) {
     Ret = regmap_read(Conegx->regmap, GET_BUTTON_LOCK, &Val);
     if (Ret) {
         printk(KERN_ERR "conegx: can't read GET_BUTTON_LOCK Register\n");
+        mutex_unlock(&Conegx->lock);
         return Ret;
     }
     Conegx->TstButtonLock = (Val & 0x1);

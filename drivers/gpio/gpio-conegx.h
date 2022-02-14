@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 0.4
+ * @version 0.0.5
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "0.0.4"
+#define DRIVER_VERSION "0.0.5"
 
 
 /* CONEGX REGISTERMAP */
@@ -197,8 +197,8 @@ const char *const conegx_gpio_names[] = {
 
 	"S_1",
 	"S_2",
-	"Relay 3",
-	"Relay 4",
+	"W_3",
+	"W_4",
 	"MRES_M2",
 	"MRES_M1",
 	"MRES_S2",
