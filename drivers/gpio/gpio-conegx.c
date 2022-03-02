@@ -1004,11 +1004,11 @@ static int setup_leds(struct i2c_client *client) {
     for (i = 0; i < NR_OF_LEDS; i++) {
         struct conegx_led *Led = &Conegx->leds[i];
         Led->led_no = i;
+        Led->name = conegx_led_names[i];
         Led->ldev.brightness_set_blocking = conegxled_set_brightness;
         Led->ldev.max_brightness = LED_FULL;
         Led->ldev.name = conegx_led_names[i];
-        Led->name = conegx_led_names[i];
-        Led->ldev.default_trigger = NULL;
+        //Led->ldev.default_trigger = NULL;
         Err = led_classdev_register(&client->dev, &Led->ldev);
         if (Err < 0) {
             dev_err(&client->dev, "couldn't register LED %s\n",
@@ -1016,7 +1016,10 @@ static int setup_leds(struct i2c_client *client) {
             unregister_leds(i);
             return -1;
         }
-        led_sysfs_enable(&Led->ldev);
+        mutex_lock(&Led->ldev.led_access);
+		led_sysfs_enable(&Led->ldev);
+		mutex_unlock(&Led->ldev.led_access);
+       
     }
 
     return 0;
