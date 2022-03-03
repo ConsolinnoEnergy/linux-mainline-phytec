@@ -34,10 +34,6 @@
 	status = "okay";
 };
 
-&tlv320 {
-	status = "okay";
-};
-
 &ecspi1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
@@ -70,7 +66,11 @@
 };
 
 &i2c_rtc {
+
+	pinctrl-0 = <&pinctrl_rtc_1>;
+	interrupt-parent = <&gpio1>;
 	status = "okay";
+	
 };
 
 &reg_can1_en {
@@ -144,10 +144,6 @@
 };
 
 &usbotg2 {
-	status = "okay";
-};
-
-&usdhc1 {
 	status = "okay";
 };
 
@@ -231,7 +227,6 @@
 			MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x10b0
 			MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x10b0
 			MX6UL_PAD_UART5_TX_DATA__GPIO1_IO30		0x10b0
-			MX6UL_PAD_UART5_RX_DATA__GPIO1_IO31		0x10b0
 		
 		>;
 	};
@@ -327,6 +322,12 @@
 			MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b010
 			/* INT# */
 			MX6UL_PAD_NAND_DQS__GPIO4_IO16		0x1b0b0
+		>;
+	};
+
+	pinctrl_rtc_1: rtc1intgrp {
+		fsl,pins = <
+			MX6UL_PAD_UART5_RX_DATA__GPIO1_IO31	0x17059
 		>;
 	};
 };
