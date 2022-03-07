@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 0.3
+ * @version 0.4
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -161,6 +161,7 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset) {
     uint Buffer;
     int Ret = 0;
     int RegisterAdress = 0;
+    int RegisterOffset =0;
 
     Buffer = 0;
 
@@ -175,27 +176,27 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset) {
     /* read GET HBUS PINS */
     else if (IO_MRES_M2 <= offset && offset <= IO_MRES_S1) {
         RegisterAdress = GET_HBUS_PORT;
-        offset -= IO_MRES_M2;
+        RegisterOffset = offset - IO_MRES_M2;
     }
     /* read GET INPUT PINS */
     else if (IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) {
         RegisterAdress = GET_INPUT_PORT;
-        offset -= IO_FLT_HBUS24;
+        RegisterOffset = offset - IO_FLT_HBUS24;
     } else {
         return -1;
     }
 
     mutex_lock(&Conegx->lock);
-    Ret = regmap_read(Conegx->regmap, RegisterAdress, &Buffer);
     pr_info("conegx: Reading Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
-    if (Ret) {
-        printk(KERN_ERR "conegx: Error reading conegx gpio %d\n", offset);
+    Ret = regmap_read(Conegx->regmap, RegisterAdress, &Buffer);
+        if (Ret) {
+        printk(KERN_ERR "conegx: Reading Register 0x%x\n", RegisterAdress);
         mutex_unlock(&Conegx->lock);
         return Ret;
     }
 
     mutex_unlock(&Conegx->lock);
-    return !!(Buffer & BIT(offset));
+    return !!(Buffer & BIT(RegisterOffset));
 }
 
 /**
