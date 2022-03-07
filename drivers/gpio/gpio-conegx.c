@@ -279,7 +279,13 @@ static int conegx_direction_input(struct gpio_chip *chip, unsigned offset) {
 
     pr_info("conegx: setting direction INPUT for gpio %d %s\n",
             offset, conegx_gpio_names[offset]);
-    if (IO_MRES_M2 <= offset && offset <= IO_MRES_S1) {
+
+    /* Return error for Relais Outputs */
+    if (IO_RELAY_1 <= offset && offset <= IO_RELAY_4) {
+        return -1;
+    }
+    /* Set Direction for MRES PINS */
+    else if (IO_MRES_M2 <= offset && offset <= IO_MRES_S1) {
         /* Shit Offset to internal Bits */
         offset -= IO_MRES_M2;
 
@@ -299,11 +305,11 @@ static int conegx_direction_input(struct gpio_chip *chip, unsigned offset) {
 
         mutex_unlock(&Conegx->lock);
         return 0;
-    } else if (IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) {
-        return 0;
-    } else {
-        return -1;
+    
     }
+    
+    return conegx_get_gpio(chip,offset);
+    
 }
 
 /**
