@@ -162,7 +162,7 @@
 	eepromnfc@53 {
 		compatible = "st25dv,st25dv04k";
 		reg = <0x53>;
-		status = "disabled";
+		status = "okay";
 	};
 
 	conegx@48 {
