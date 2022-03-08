@@ -20,16 +20,17 @@
 	compatible = "phytec,imx6ull-pbacd10-emmc", "phytec,imx6ull-pbacd10",
 		     "phytec,imx6ull-pcl063","fsl,imx6ull";
 
+	memory {
+		device_type = "memory";
+		reg = <0x80000000 0x20000000>;
+	};
+
 	aliases {
 		mmc0 = &usdhc1; /* uSD / MMC  */
 		mmc1 = &usdhc2; /* internal eMMC */
 	};
 };
 
-&memory {
-	device_type = "memory";
-	reg = <0x80000000 0x20000000>;
-};
 
 &adc1 {
 	status = "okay";
