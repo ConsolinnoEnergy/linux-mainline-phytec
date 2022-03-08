@@ -917,7 +917,7 @@ config GPIO_PCA953X_IRQ
 	  controller. It requires the driver to be built in the kernel.
 
 config GPIO_CONEGX
-	bool "Conegx Gpio Expander and Power watch"
+	tristate "Conegx Gpio Expander and Power watch"
 	select GPIOLIB_IRQCHIP
 	help
 	  Consolinno Energy Conegx Module.

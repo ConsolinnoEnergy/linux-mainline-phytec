@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 0.1
+ * @version 0.0.5
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -30,6 +30,10 @@
 
 #ifndef __CONEGX_DRIVER
 #define __CONEGX_DRIVER
+
+/* DIVER VERSION*/
+#define DRIVER_VERSION "0.0.5"
+
 
 /* CONEGX REGISTERMAP */
 #define GET_VOLTAGE_PORT 0x01
@@ -191,22 +195,22 @@ const bool conegx_reg_access[23] = {
 
 const char *const conegx_gpio_names[] = {
 
-	"Relay 1",
-	"Relay 2",
-	"Relay 3",
-	"Relay 4",
+	"S_1",
+	"S_2",
+	"W_3",
+	"W_4",
 	"MRES_M2",
 	"MRES_M1",
 	"MRES_S2",
 	"MRES_S1",
 	"FLT_HBUS24",
 	"FLT_HBUS",
-	"Reset Button",
-	"Test Button",
-	"Potential Free Input 1",
-	"Potential Free Input 2",
-	"Potential Free Input 3",
-	"Potential Free Input 4",
+	"RST_Butt",
+	"TST_Butt",
+	"SwitchIN_1",
+	"SwitchIN_2",
+	"SwitchIN_3",
+	"SwitchIN_4",
 };
 
 const char *const conegx_led_names[] = {
