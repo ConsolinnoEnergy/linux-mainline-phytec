@@ -77,21 +77,6 @@
 	status = "okay";
 };
 
-&reg_sound_1v8 {
-	status = "okay";
-};
-
-&reg_sound_3v3 {
-	status = "okay";
-};
-
-&sai2 {
-	status = "okay";
-};
-
-&sound {
-	status = "okay";
-};
 
 /* DEBUG Port */
 &uart1 {
