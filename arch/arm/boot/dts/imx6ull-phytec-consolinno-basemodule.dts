@@ -65,13 +65,18 @@
 	status = "okay";
 };
 
+&snvs_rtc {
+	status = "disabled";
+};
+
 &i2c_rtc {
 
 	pinctrl-0 = <&pinctrl_rtc_1>;
 	interrupt-parent = <&gpio1>;
-	status = "okay";
+	status = "disabled";
 	
 };
+
 
 &reg_can1_en {
 	status = "okay";
