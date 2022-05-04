@@ -73,6 +73,7 @@
 
 	pinctrl-0 = <&pinctrl_rtc_1>;
 	interrupt-parent = <&gpio1>;
+	interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
 	status = "disabled";
 	
 };
