@@ -23,6 +23,7 @@
 	aliases {
 		mmc0 = &usdhc1; /* uSD / MMC  */
 		mmc1 = &usdhc2; /* internal eMMC */
+		ethernet2 = &smsc95xx1;
 	};
 };
 
@@ -145,6 +146,13 @@
 
 &usbotg2 {
 	status = "okay";
+	#address-cells = <1>;
+    #size-cells = <0>;
+	smsc95xx1: smsc95xx@1 {
+		compatible = "usb424,9e00";
+		reg = <1>;
+		local-mac-address = [00 11 22 33 44 55];
+	};
 };
 
 &usdhc2 {
