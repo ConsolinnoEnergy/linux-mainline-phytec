@@ -23,6 +23,7 @@
 	aliases {
 		mmc0 = &usdhc1; /* uSD / MMC  */
 		mmc1 = &usdhc2; /* internal eMMC */
+		ethernet2 ="/soc/bus@2100000/usb@2184200/ethernet@1/";
 	};
 };
 
@@ -65,33 +66,24 @@
 	status = "okay";
 };
 
+&snvs_rtc {
+	status = "disabled";
+};
+
 &i2c_rtc {
 
 	pinctrl-0 = <&pinctrl_rtc_1>;
 	interrupt-parent = <&gpio1>;
-	status = "okay";
+	interrupts = <31 IRQ_TYPE_LEVEL_LOW>;
+	status = "disabled";
 	
 };
+
 
 &reg_can1_en {
 	status = "okay";
 };
 
-&reg_sound_1v8 {
-	status = "okay";
-};
-
-&reg_sound_3v3 {
-	status = "okay";
-};
-
-&sai2 {
-	status = "okay";
-};
-
-&sound {
-	status = "okay";
-};
 
 /* DEBUG Port */
 &uart1 {
@@ -139,13 +131,6 @@
 
 
 
-&usbotg1 {
-	status = "okay";
-};
-
-&usbotg2 {
-	status = "okay";
-};
 
 &usdhc2 {
 	pinctrl-names = "default";
@@ -208,7 +193,15 @@
         pinctrl-0 = <&pinctrl_usb_otg2_id>;                                                  
         dr_mode = "host";                                                        
         disable-over-current;                                                    
-        status = "okay";                                                     
+        status = "okay";        
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+		smsc95xx1: ethernet@1 {
+			compatible = "usb424,9e00";
+			reg = <1>;
+			local-mac-address = [00 00 00 00 00 00];
+		};                                            
 };
 
 &iomuxc {
@@ -225,9 +218,8 @@
 			MX6UL_PAD_SD1_DATA2__GPIO2_IO20		0x10b0
 			MX6UL_PAD_LCD_VSYNC__GPIO3_IO03		0x10b0
 			MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x10b0
-			MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x10b0
+			MX6UL_PAD_LCD_HSYNC__GPIO3_IO02		0x10b0
 			MX6UL_PAD_UART5_TX_DATA__GPIO1_IO30		0x10b0
-		
 		>;
 	};
 
