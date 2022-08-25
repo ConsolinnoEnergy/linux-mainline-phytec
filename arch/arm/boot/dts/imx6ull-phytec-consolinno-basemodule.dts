@@ -27,6 +27,10 @@
 	};
 };
 
+&snvs_poweroff {
+   status = "okay";
+};
+
 &adc1 {
 	status = "okay";
 };
@@ -38,11 +42,16 @@
 &ecspi1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
-	cs-gpios = <0>;
-	status = "enabled";
-	tpm@0 {
-		compatible = "infineon,slb9670";
-		spi-max-frequency = <10000000>;
+	cs-gpios = <&gpio4 26 GPIO_ACTIVE_LOW>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	tpm0: slb9670@0 {
+		pinctrl-names = "default";
+		compatible = "infineon,slb9670", "tcg,tpm_tis-spi";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		spi-max-frequency = <32000000>;
 		reg = <0>; //cs0
 		status = "okay";
 	};
@@ -280,9 +289,19 @@
 			MX6UL_PAD_CSI_DATA07__ECSPI1_MISO	0x100b1
 			MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI	0x100b1
 			MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK	0x100b1
-			MX6UL_PAD_CSI_DATA05__ECSPI1_SS0	0x1b0b0 	/* SS0 */
+			MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x1b0b0 	/* SS0 */
 		>;
 	};
+
+	
+
+	pinctrl_ecspi1_tpm: ecspi1-tpm-grp {
+		fsl,pins = <
+			MX6UL_PAD_CSI_DATA00__GPIO4_IO21	0x1b0b0 /* irq */
+			MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x1b0b0 /* reset */
+		>;
+	};
+
 
 	pinctrl_flexcan1: flexcan1 {                                             
 		fsl,pins = <                                                     
