@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.0.0
+ * @version 1.1.0
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -32,68 +32,94 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.0.0"
+#define DRIVER_VERSION "1.1.0"
 
+/* Conegx Pins */
+#define RST_PIN 4
 
-/* CONEGX REGISTERMAP */
-#define GET_VOLTAGE_PORT 0x01
-#define GET_INPUT_PORT 0x02
-#define SET_RELAY_PORT 0x03
-#define GET_RELAY_PORT 0x04
-#define SET_HBUS_PORT 0x05
-#define GET_HBUS_PORT 0x06
-#define SET_HBUS_DIRECTION 0x07
-#define GET_HBUS_DIRECTION 0x08
-#define SET_LED_PORT_0 0x09
-#define GET_LED_PORT_0 0x0A
-#define SET_LED_PORT_1 0x0B
-#define GET_LED_PORT_1 0x0C
-#define ALERT 0x0D
-#define SET_DEFAULT_PARAMETER 0x0E
-#define GET_DEFAULT_PARAMETER 0x0F
-#define FW_VERSION_MAJOR 0x010
-#define FW_VERSION_MINOR_1 0x11
-#define FW_VERSION_MINOR_2 0x12
-#define DEVICE_DESCRIPTION 0x13
-#define GET_POWER_FAILURE 0x14
-#define SET_OS_READY 0x15
-#define SET_BUTTON_LOCK 0x16
-#define GET_BUTTON_LOCK 0x17
+/* Original CONEGX REGISTERMAP */
+// enum Conegx_Registermap {
+// GET_VOLTAGE_PORT   = 1, 
+// GET_INPUT_PORT 	      ,
+// SET_RELAY_PORT 	      ,
+// GET_RELAY_PORT 	      ,
+// SET_HBUS_PORT         ,
+// GET_HBUS_PORT         ,
+// SET_HBUS_DIRECTION    ,
+// GET_HBUS_DIRECTION 	  ,
+// SET_LED_PORT_0 		  ,
+// GET_LED_PORT_0 		  ,
+// SET_LED_PORT_1 		  ,
+// GET_LED_PORT_1 		  ,
+// ALERT 				  ,
+// SET_DEFAULT_PARAMETER ,
+// GET_DEFAULT_PARAMETER ,
+// FW_VERSION_MAJOR 	  ,
+// FW_VERSION_MINOR_1 	  ,
+// FW_VERSION_MINOR_2 	  ,
+// DEVICE_DESCRIPTION 	  ,
+// GET_POWER_FAILURE 	  ,
+// SET_OS_READY 		  ,
+// SET_BUTTON_LOCK 	  ,
+// GET_BUTTON_LOCK 	  ,
+// };
 
-#define WRITE 1
-#define READ 0
+/* New CONEGX REGISTERMAP */
+enum Conegx_Registermap {
+DEVICE_DESCRIPTION 	  ,
+FW_VERSION_MAJOR 	  ,
+FW_VERSION_MINOR_1 	  ,
+FW_VERSION_MINOR_2 	  ,
+SET_OS_READY 		  ,
+GET_INPUT_PORT 	      ,
+SET_RELAY_PORT 	      ,
+GET_RELAY_PORT 	      ,
+SET_LED_PORT_0 		  ,
+GET_LED_PORT_0 		  ,
+SET_LED_PORT_1 		  ,
+GET_LED_PORT_1 		  ,
+ALERT 				  ,
+SET_BUTTON_LOCK 	  ,
+GET_BUTTON_LOCK 	  ,
+
+NUMBER_OF_CONEGX_REGISTERS,
+};
+
 #define WRITE 1
 #define READ 0
 
 /* GPIO NUMBERS */
-#define IO_RELAY_1 0
-#define IO_RELAY_2 1
-#define IO_RELAY_3 2
-#define IO_RELAY_4 3
-#define IO_MRES_M2 4
-#define IO_MRES_M1 5
-#define IO_MRES_S2 6
-#define IO_MRES_S1 7
-#define IO_FLT_HBUS24 8
-#define IO_FLT_HBUS 9
-#define IO_RST_BUTTON 10
-#define IO_TST_BUTTON 11
-#define IO_PFI_1 12
-#define IO_PFI_2 13
-#define IO_PFI_3 14
-#define IO_PFI_4 15
+enum GPIO_Numbers {
+IO_RELAY_1    ,
+IO_RELAY_2    ,
+IO_RELAY_3    ,
+IO_RELAY_4    ,
+IO_MRES_M2    ,
+IO_MRES_M1    ,
+IO_MRES_S2    ,
+IO_MRES_S1    ,
+IO_FLT_HBUS24 ,
+IO_FLT_HBUS   ,
+IO_RST_BUTTON ,
+IO_TST_BUTTON ,
+IO_PFI_1 	  ,
+IO_PFI_2 	  ,
+IO_PFI_3 	  ,
+IO_PFI_4 	  ,
+};
 
 /* LED NUMBERS */
-#define IO_LED_1 0
-#define IO_LED_2 1
-#define IO_LED_3 2
-#define IO_LED_4 3
-#define IO_LED_5 4
-#define IO_LED_6 5
-#define IO_RGBLED_1_1 6
-#define IO_RGBLED_1_2 7
-#define IO_RGBLED_1_3 8
-
+enum LED_Numbers {
+IO_LED_1      ,
+IO_LED_2      ,
+IO_LED_3      ,
+IO_LED_4      ,
+IO_LED_5      ,
+IO_LED_6      ,
+IO_RGBLED_1_1 ,
+IO_RGBLED_1_2 ,
+IO_RGBLED_1_3 ,
+};
 
 
 /* ------------------------------IRQ------------------------------ */
@@ -103,31 +129,31 @@
 #define RISING_EDGE 1
 
 /* IRQ NUMBERS */
-
-#define POWER_FAILURE_INTERUPT 1
-#define VOLTAGE_ALERT_INTERRUPT 2
-#define VOLTAGE_NORMAL_INTERRUPT 3
-#define	POTENTIAL_FREE_INPUT_1_RISING_EDGE		14
-#define	POTENTIAL_FREE_INPUT_1_FALLING_EDGE		15
-#define	POTENTIAL_FREE_INPUT_2_RISING_EDGE		16
-#define	POTENTIAL_FREE_INPUT_2_FALLING_EDGE		17
-#define	POTENTIAL_FREE_INPUT_3_RISING_EDGE		18
-#define	POTENTIAL_FREE_INPUT_3_FALLING_EDGE		19
-#define	POTENTIAL_FREE_INPUT_4_RISING_EDGE		20
-#define	POTENTIAL_FREE_INPUT_4_FALLING_EDGE		21
-#define	FLT_HBUS_RISING_EDGE		22
-#define	FLT_HBUS_FALLING_EDGE		23
-#define	FLT_HBUS24_RISING_EDGE		24
-#define	FLT_HBUS24_FALLING_EDGE		25
-#define	MRES_M1_RISING_EDGE		26
-#define	MRES_M1_FALLING_EDGE		27
-#define	MRES_M2_RISING_EDGE		28
-#define	MRES_M2_FALLING_EDGE		29
-#define	MRES_S1_RISING_EDGE		30
-#define	MRES_S1_FALLING_EDGE		31
-#define	MRES_S2_RISING_EDGE		32
-#define	MRES_S2_FALLING_EDGE		33
-
+enum IRQ_Numbers {
+POWER_FAILURE_INTERUPT 			 = 1,
+VOLTAGE_ALERT_INTERRUPT 			,
+VOLTAGE_NORMAL_INTERRUPT 			,
+POTENTIAL_FREE_INPUT_1_RISING_EDGE	,
+POTENTIAL_FREE_INPUT_1_FALLING_EDGE	,
+POTENTIAL_FREE_INPUT_2_RISING_EDGE	,
+POTENTIAL_FREE_INPUT_2_FALLING_EDGE	,
+POTENTIAL_FREE_INPUT_3_RISING_EDGE	,
+POTENTIAL_FREE_INPUT_3_FALLING_EDGE	,
+POTENTIAL_FREE_INPUT_4_RISING_EDGE	,
+POTENTIAL_FREE_INPUT_4_FALLING_EDGE	,
+FLT_HBUS_RISING_EDGE				,
+FLT_HBUS_FALLING_EDGE				,
+FLT_HBUS24_RISING_EDGE				,
+FLT_HBUS24_FALLING_EDGE				,
+MRES_M1_RISING_EDGE					,
+MRES_M1_FALLING_EDGE				,
+MRES_M2_RISING_EDGE					,
+MRES_M2_FALLING_EDGE				,
+MRES_S1_RISING_EDGE					,
+MRES_S1_FALLING_EDGE				,
+MRES_S2_RISING_EDGE					,
+MRES_S2_FALLING_EDGE				,
+};
 /* LED */
 #define NR_OF_LEDS 9
 #define LED_FULL 255
@@ -158,7 +184,6 @@ const int conegx_gpio_irq_map[20][2] = {
 	{7, FALLING_EDGE},	//	MRES_S1
 	{6, RISING_EDGE},	//	MRES_S2
 	{6, FALLING_EDGE},	//	MRES_S2
-
 };
 
 /**
@@ -166,35 +191,25 @@ const int conegx_gpio_irq_map[20][2] = {
  * READ= read acces only
  * WRITE=  write acces only
  */
-const bool conegx_reg_access[23] = {
-	READ,  //	Get Voltage Port
+const bool conegx_reg_access[NUMBER_OF_CONEGX_REGISTERS] = {
+	READ,  //	Get Device Description	
+	READ,  //	Get FW Version Major
+	READ,  //	Get FW Version Minor 1
+	READ,  //	Get FW Version Minor 2
+	WRITE, //	Set OS READy
 	READ,  //	Get Input Port
 	WRITE, //	Set Relay Port
 	READ,  //	Get Relay Port
-	WRITE, //	Set HBUS Port
-	READ,  //	Get HBUS Port
-	WRITE, //	Set HBUS Direction
-	READ,  //	Get HBUS Direction
 	WRITE, //	Set LED Port 0
 	READ,  //	Get LED Port 0
 	WRITE, //	Set LED Port 1
 	READ,  //	Get LED Port 1
 	READ,  //	Alert
-	WRITE, //	Set Default Parameter
-	READ,  //	Get Default Parameter
-	READ,  //	Get FW Version Major
-	READ,  //	Get FW Version Minor 1
-	READ,  //	Get FW Version Minor 2
-	READ,  //	Get Device Description
-	READ,  //	Get Power Failure
-	WRITE, //	Set OS READy
 	WRITE, //	Set Button Lock
-	READ,  //	Get Button Lock
-
+	READ,  //	Get Button Lock	
 };
 
 const char *const conegx_gpio_names[] = {
-
 	"S_1",
 	"S_2",
 	"W_3",
@@ -214,7 +229,6 @@ const char *const conegx_gpio_names[] = {
 };
 
 const char *const conegx_led_names[] = {
-
 	"CON:LED1",
 	"CON:LED2",
 	"CON:LED3",
@@ -224,7 +238,6 @@ const char *const conegx_led_names[] = {
 	"CON:RGBLED1.1",
 	"CON:RGBLED1.2",
 	"CON:RGBLED1.3",
-
 };
 /**
  * @brief Struct For Conegx LEDs
