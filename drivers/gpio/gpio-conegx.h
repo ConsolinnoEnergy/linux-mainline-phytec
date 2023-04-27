@@ -35,7 +35,14 @@
 #define DRIVER_VERSION "1.1.0"
 
 /* Conegx Pins */
-#define RST_PIN 4
+/** 
+ * GPIO number = (bank - 1) * 32 + bit
+ * 
+ * Reset Pin is GPIO3_IO2 on the i.MX6
+ * 
+ * => RST_PIN = (3 - 1) * 32 + 2 = 66 
+ */
+#define RST_PIN 66
 
 /* Original CONEGX REGISTERMAP */
 // enum Conegx_Registermap {
