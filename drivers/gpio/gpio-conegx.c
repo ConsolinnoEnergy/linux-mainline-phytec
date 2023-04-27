@@ -1165,7 +1165,20 @@ static int reset_MSP430(void)
 
     gpio_free(RST_PIN);
 
-    /* Set OS Ready */
+    mdelay(10);
+
+    /* Set OS Ready flag ----------------------------------------------------*/
+    rv = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
+    
+    if(rv == 0) 
+    {
+        pr_info("Reset successful, OS_READY flag set\n");
+    }
+    else
+    {
+        printk(KERN_ERR "conegx: Error resetting MSP");
+        return -1;
+    }
 
     return 0;
 }
