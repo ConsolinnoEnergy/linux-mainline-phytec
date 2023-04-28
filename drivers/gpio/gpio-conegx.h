@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.0
+ * @version 1.1.1
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.1.0"
+#define DRIVER_VERSION "1.1.1"
 
 /* Conegx Pins */
 /** 
@@ -137,10 +137,10 @@ IO_RGBLED_1_3 ,
 
 /* IRQ NUMBERS */
 enum IRQ_Numbers {
-POWER_FAILURE_INTERUPT 			 = 1,
+POWER_FAILURE_INTERUPT 			    = 1,
 VOLTAGE_ALERT_INTERRUPT 			,
 VOLTAGE_NORMAL_INTERRUPT 			,
-POTENTIAL_FREE_INPUT_1_RISING_EDGE	,
+POTENTIAL_FREE_INPUT_1_RISING_EDGE	= 14,
 POTENTIAL_FREE_INPUT_1_FALLING_EDGE	,
 POTENTIAL_FREE_INPUT_2_RISING_EDGE	,
 POTENTIAL_FREE_INPUT_2_FALLING_EDGE	,
