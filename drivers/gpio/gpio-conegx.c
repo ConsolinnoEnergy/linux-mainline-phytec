@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.1
+ * @version 1.1.2
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -133,25 +133,36 @@ EXPORT_SYMBOL_GPL(ConegxRegmap);
  * @param offset Gpio Number 
  * @return int  succesfull returns 0 , failure -1
  */
-static int conegx_get_direction(struct gpio_chip *chip, unsigned offset) {
-    /* RELAY PORT */
-    if(IO_RELAY_1 <= offset && offset <= IO_RELAY_4) 
+static int conegx_get_direction(struct gpio_chip *chip, unsigned offset) 
+{
+    int Direction;
+    
+    if((offset >= IO_RELAY_1) && (offset <= IO_PFI_4))
     {
-        return 0;  //OUTPUT
+        Direction = conegx_directions[offset];
     }
-    /* HBUS */
-    else if(IO_MRES_M2 <= offset && offset <= IO_MRES_S1) 
+    else
     {
-        /* TODO: READ FROM MSP */
-        return 1;  //INPUT
+        Direction = -1;
     }
-    /* INPUT PORT */
-    else if(IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) 
-    {
-        return 1;  //INPUT
-    }
+    // /* RELAY PORT */
+    // if(IO_RELAY_1 <= offset && offset <= IO_RELAY_4) 
+    // {
+    //     return 0;  //OUTPUT
+    // }
+    // /* HBUS */
+    // else if(IO_MRES_M2 <= offset && offset <= IO_MRES_S1) 
+    // {
+    //     /* TODO: READ FROM MSP */
+    //     return 1;  //INPUT
+    // }
+    // /* INPUT PORT */
+    // else if(IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) 
+    // {
+    //     return 1;  //INPUT
+    // }
 
-    return 0;
+    return Direction;
 }
 
 /**
@@ -233,6 +244,10 @@ static int conegx_set_gpio(unsigned offset, int value)
         RegisterBuffer = &Conegx->SetRelayBuffer;
         Buffer = Conegx->SetRelayBuffer;
         InternalRegisterOffset = offset - IO_RELAY_1;
+    }
+    else
+    {
+        return -1;
     } 
 
     /* Modify Bits in Buffer */
@@ -291,8 +306,6 @@ static void set_gpio(struct gpio_chip *chip, unsigned offset, int value)
  */
 static int conegx_direction_input(struct gpio_chip *chip, unsigned offset) 
 {
-    int Ret;
-
     pr_info("conegx: setting direction INPUT for gpio %d %s\n",
             offset, conegx_gpio_names[offset]);
 
@@ -319,9 +332,6 @@ static int conegx_direction_output(
     unsigned offset, 
     int val) 
 {
-    int Ret;
-    int InternalRegisterOffset;
-
     pr_info("conegx: setting direction OUTPUT for gpio %d %s\n",
             offset, conegx_gpio_names[offset]);
 
@@ -754,6 +764,10 @@ static int conegxled_set_brightness(
         Buffer = Conegx->SetLedPort1Buffer;
         InternalRegisterOffset = led->led_no - IO_RGBLED_1_1;
     }
+    else
+    {
+        return -1;
+    }
 
     /* Modify Bits in Buffer */
     if(value) 
@@ -981,7 +995,7 @@ static int conegx_probe(struct i2c_client *client) {
     Conegx->chip.direction_output = conegx_direction_output;
     Conegx->chip.base = -1;
     Conegx->chip.names = conegx_gpio_names;
-    Conegx->chip.ngpio = 16;
+    Conegx->chip.ngpio = NUMBER_OF_CONEGX_GPIOS;
     Conegx->chip.can_sleep = true;
 
     Ret = devm_gpiochip_add_data(Conegx->dev, &Conegx->chip, Conegx);
@@ -1143,7 +1157,7 @@ static int conegx_remove(struct i2c_client *client)
     if(Ret) 
     {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
-        reset_MSP430();
+        //reset_MSP430();
     }
     proc_remove(ProcfsParent);
     unregister_leds(NR_OF_LEDS);

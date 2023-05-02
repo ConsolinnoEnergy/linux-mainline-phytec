@@ -2,10 +2,10 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.1
+ * @version 1.1.2
  * @date 2021-06-22
  * 
- * @copyright: Copyrigth (c) 2021
+ * @copyright: Copyrigth (c) 2023
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.1.1"
+#define DRIVER_VERSION "1.1.2"
 
 /* Conegx Pins */
 /** 
@@ -94,6 +94,8 @@ NUMBER_OF_CONEGX_REGISTERS,
 
 #define WRITE 1
 #define READ 0
+#define INPUT 1
+#define OUTPUT 0
 
 /* GPIO NUMBERS */
 enum GPIO_Numbers {
@@ -113,6 +115,8 @@ IO_PFI_1 	  ,
 IO_PFI_2 	  ,
 IO_PFI_3 	  ,
 IO_PFI_4 	  ,
+
+NUMBER_OF_CONEGX_GPIOS,
 };
 
 /* LED NUMBERS */
@@ -126,6 +130,8 @@ IO_LED_6      ,
 IO_RGBLED_1_1 ,
 IO_RGBLED_1_2 ,
 IO_RGBLED_1_3 ,
+
+NUMBER_OF_CONEGX_LEDS,
 };
 
 
@@ -171,26 +177,26 @@ MRES_S2_FALLING_EDGE				,
  * @description: maps IRQ Numbers to GPio Pins and Edges 
  */
 const int conegx_gpio_irq_map[20][2] = {
-	{12, RISING_EDGE},	//	PFI 1
-	{12, FALLING_EDGE}, //	PFI 1
-	{13, RISING_EDGE},	//	PFI 2
-	{13, FALLING_EDGE}, //	PFI 2
-	{14, RISING_EDGE},	//	PFI 3
-	{14, FALLING_EDGE}, //	PFI 3
-	{15, RISING_EDGE},	//	PFI 4
-	{15, FALLING_EDGE}, //	PFI 4
-	{9, RISING_EDGE},	//	FLT_HBUS
-	{9, FALLING_EDGE},	//	FLT_HBUS
-	{8, RISING_EDGE},	//	FLT_HBUS_24
-	{8, FALLING_EDGE},	//	FLT_HBUS_24
-	{5, RISING_EDGE},	//	MRES_M1
-	{5, FALLING_EDGE},	//	MRES_M1
-	{4, RISING_EDGE},	//	MRES_M2
-	{4, FALLING_EDGE},	//	MRES_M2
-	{7, RISING_EDGE},	//	MRES_S1
-	{7, FALLING_EDGE},	//	MRES_S1
-	{6, RISING_EDGE},	//	MRES_S2
-	{6, FALLING_EDGE},	//	MRES_S2
+	{IO_PFI_1, RISING_EDGE},	//	PFI 1
+	{IO_PFI_1, FALLING_EDGE}, //	PFI 1
+	{IO_PFI_2, RISING_EDGE},	//	PFI 2
+	{IO_PFI_2, FALLING_EDGE}, //	PFI 2
+	{IO_PFI_3, RISING_EDGE},	//	PFI 3
+	{IO_PFI_3, FALLING_EDGE}, //	PFI 3
+	{IO_PFI_4, RISING_EDGE},	//	PFI 4
+	{IO_PFI_4, FALLING_EDGE}, //	PFI 4
+	{IO_FLT_HBUS, RISING_EDGE},	//	FLT_HBUS
+	{IO_FLT_HBUS, FALLING_EDGE},	//	FLT_HBUS
+	{IO_FLT_HBUS24, RISING_EDGE},	//	FLT_HBUS_24
+	{IO_FLT_HBUS24, FALLING_EDGE},	//	FLT_HBUS_24
+	{IO_MRES_M1, RISING_EDGE},	//	MRES_M1
+	{IO_MRES_M1, FALLING_EDGE},	//	MRES_M1
+	{IO_MRES_M2, RISING_EDGE},	//	MRES_M2
+	{IO_MRES_M2, FALLING_EDGE},	//	MRES_M2
+	{IO_MRES_S1, RISING_EDGE},	//	MRES_S1
+	{IO_MRES_S1, FALLING_EDGE},	//	MRES_S1
+	{IO_MRES_S2, RISING_EDGE},	//	MRES_S2
+	{IO_MRES_S2, FALLING_EDGE},	//	MRES_S2
 };
 
 /**
@@ -216,7 +222,7 @@ const bool conegx_reg_access[NUMBER_OF_CONEGX_REGISTERS] = {
 	READ,  //	Get Button Lock	
 };
 
-const char *const conegx_gpio_names[] = {
+const char *const conegx_gpio_names[NUMBER_OF_CONEGX_GPIOS] = {
 	"S_1",
 	"S_2",
 	"W_3",
@@ -235,7 +241,7 @@ const char *const conegx_gpio_names[] = {
 	"SwitchIN_4",
 };
 
-const char *const conegx_led_names[] = {
+const char *const conegx_led_names[NUMBER_OF_CONEGX_LEDS] = {
 	"CON:LED1",
 	"CON:LED2",
 	"CON:LED3",
@@ -246,6 +252,26 @@ const char *const conegx_led_names[] = {
 	"CON:RGBLED1.2",
 	"CON:RGBLED1.3",
 };
+
+const int conegx_directions[NUMBER_OF_CONEGX_GPIOS] = {
+	OUTPUT,	// IO_RELAY_1   
+	OUTPUT,	// IO_RELAY_2   
+	OUTPUT,	// IO_RELAY_3   
+	OUTPUT,	// IO_RELAY_4   
+	INPUT,	// IO_MRES_M2   
+	INPUT,	// IO_MRES_M1   
+	INPUT,	// IO_MRES_S2   
+	INPUT,	// IO_MRES_S1   
+	INPUT,	// IO_FLT_HBUS24
+	INPUT,	// IO_FLT_HBUS  
+	INPUT,	// IO_RST_BUTTON
+	INPUT,	// IO_TST_BUTTON
+	INPUT,	// IO_PFI_1
+	INPUT,	// IO_PFI_2
+	INPUT,	// IO_PFI_3
+	INPUT	// IO_PFI_4
+};
+
 /**
  * @brief Struct For Conegx LEDs
  * 
