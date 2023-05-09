@@ -44,6 +44,8 @@
  */
 #define RST_PIN 66
 
+#define I2C_DELAY 3 // 3 ms
+
 /* Original CONEGX REGISTERMAP */
 // enum Conegx_Registermap {
 // GET_VOLTAGE_PORT   = 1, 

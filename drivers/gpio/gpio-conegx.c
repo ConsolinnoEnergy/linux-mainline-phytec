@@ -174,11 +174,10 @@ static int conegx_get_direction(struct gpio_chip *chip, unsigned offset)
  */
 static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset) 
 {
-    uint Buffer;
+    uint Buffer = 0;
     int Ret = 0;
     int RegisterAdress = 0;
-
-    Buffer = 0;
+    bool readRegMap = false;
 
     pr_info("conegx: getting gpio %d %s\n", offset, conegx_gpio_names[offset]);
 
@@ -188,12 +187,14 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
     if(IO_RELAY_1 <= offset && offset <= IO_RELAY_4) 
     {
         RegisterAdress = GET_RELAY_PORT;
+        Buffer = Conegx->SetRelayBuffer;
     }
     /* read GET INPUT PINS */
     else if(IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) 
     {
         RegisterAdress = GET_INPUT_PORT;
         offset -= IO_FLT_HBUS24;
+        readRegMap = true;
     } 
     else 
     {
@@ -201,17 +202,20 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
     }
 
     mutex_lock(&Conegx->lock);
-    Ret = regmap_read(Conegx->regmap, RegisterAdress, &Buffer);
-    mdelay(10);
-    pr_info("conegx: Reading Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
-    if(Ret) 
+    if(readRegMap)
     {
-        printk(KERN_ERR "conegx: Error reading conegx gpio %d\n", offset);
+        Ret = regmap_read(Conegx->regmap, RegisterAdress, &Buffer);
+        mdelay(I2C_DELAY);
+        pr_info("conegx: Reading Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
+        if(Ret) 
+        {
+            printk(KERN_ERR "conegx: Error reading conegx gpio %d\n", offset);
 
-        reset_MSP430();
+            reset_MSP430();
 
-        mutex_unlock(&Conegx->lock);
-        return Ret;
+            mutex_unlock(&Conegx->lock);
+            return Ret;
+        }
     }
 
     mutex_unlock(&Conegx->lock);
@@ -227,7 +231,7 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
  */
 static int conegx_set_gpio(unsigned offset, int value) 
 {
-    uint Buffer;
+    uint Buffer, NewValue;
     int Ret, RegisterAdress = 0;
     int InternalRegisterOffset;
     __u8 *RegisterBuffer = NULL;
@@ -253,34 +257,39 @@ static int conegx_set_gpio(unsigned offset, int value)
     /* Modify Bits in Buffer */
     if(value)
     {
-        Buffer |= BIT(InternalRegisterOffset);
+        NewValue = Buffer | BIT(InternalRegisterOffset);
     }
     else
     {
-        Buffer &= ~BIT(InternalRegisterOffset);
+        NewValue = Buffer & ~(BIT(InternalRegisterOffset));
     }
-    /* Write buffer to Register */
-    mutex_lock(&Conegx->lock);
-    Ret = regmap_write(Conegx->regmap, RegisterAdress, Buffer);
-    mdelay(10);
-    pr_info("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
-    if(Ret) 
+    /* Write buffer to Register if the buffer changed.*/
+    //if(NewValue != Buffer)
+    if(true)
     {
-        printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
-               RegisterAdress);
+        mutex_lock(&Conegx->lock);
+        Ret = regmap_write(Conegx->regmap, RegisterAdress, NewValue);
+        mdelay(I2C_DELAY);
+        pr_info("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, NewValue);
+        if(Ret) 
+        {
+            printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
+                RegisterAdress);
 
-        reset_MSP430();
+            reset_MSP430();
+
+            mutex_unlock(&Conegx->lock);
+            return -1;  
+        } 
+        else 
+        {
+            /* Update RegisterBuffer */
+            *RegisterBuffer = NewValue;
+        }
 
         mutex_unlock(&Conegx->lock);
-        return -1;  
-    } 
-    else 
-    {
-        /* Update RegisterBuffer */
-        *RegisterBuffer = Buffer;
     }
-
-    mutex_unlock(&Conegx->lock);
+    
     return 0;
 }
 
@@ -547,7 +556,7 @@ static ssize_t write_proc_tstbuttonlock(
         Ret = regmap_write(Conegx->regmap, SET_BUTTON_LOCK,
                            (Conegx->TstButtonLock |
                             (Conegx->RstButtonLock << 4)));
-        mdelay(10);
+        mdelay(I2C_DELAY);
         if(Ret) 
         {
             printk(KERN_ERR
@@ -641,7 +650,7 @@ static ssize_t write_proc_rstbuttonlock(
         Ret = regmap_write(Conegx->regmap, SET_BUTTON_LOCK,
                            (Conegx->TstButtonLock |
                             (Conegx->RstButtonLock << 4)));
-        mdelay(10);
+        mdelay(I2C_DELAY);
         if(Ret) 
         {
             printk(KERN_ERR
@@ -673,7 +682,7 @@ static irqreturn_t conegx_irq(int irq, void *data)
 
     /* Read Alert Register */
     Ret = regmap_read(Conegx->regmap, ALERT, &IrqNumber);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret) 
     {
         printk(KERN_ERR "conegx: Error reading ALERT REGISTER\n");
@@ -744,7 +753,7 @@ static int conegxled_set_brightness(
     struct led_classdev *led_cdev,
     enum led_brightness value) 
 {
-    uint Buffer;
+    uint Buffer, NewValue;
     int Ret, RegisterAdress = 0;
     int InternalRegisterOffset;
     __u8 *RegisterBuffer = NULL;
@@ -772,35 +781,42 @@ static int conegxled_set_brightness(
     /* Modify Bits in Buffer */
     if(value) 
     {
+        NewValue = Buffer | BIT(InternalRegisterOffset);
         pr_info("conegx: Turn ON LED Number: %d %s\n", led->led_no, led->name);
-        Buffer |= BIT(InternalRegisterOffset);
     } 
     else
     {
-        Buffer &= ~BIT(InternalRegisterOffset);
+        NewValue = Buffer & ~(BIT(InternalRegisterOffset));
         pr_info("conegx: Turn OFF LED Number: %d %s\n", led->led_no, led->name);
     }
-    mutex_lock(&Conegx->lock);
-    /* Write buffer to Register */
-    Ret = regmap_write(Conegx->regmap, RegisterAdress, Buffer);
-    mdelay(10);
-    pr_info("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
-    if(Ret) 
+    /* Write new value to Register if it has changed. */
+    //if(NewValue != Buffer)
+    if(true)
     {
-        printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
-               RegisterAdress);
+        mutex_lock(&Conegx->lock);
+        Ret = regmap_write(Conegx->regmap, RegisterAdress, NewValue);
+        mdelay(I2C_DELAY);
+        pr_info("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, NewValue);
+        if(Ret) 
+        {
+            printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
+                RegisterAdress);
 
-        reset_MSP430();
+            reset_MSP430();
+
+            mutex_unlock(&Conegx->lock);
+            return -1;
+        } 
+        else 
+        {
+            /* Update RegisterBuffer */
+            *RegisterBuffer = NewValue;
+            
+        }
 
         mutex_unlock(&Conegx->lock);
-        return -1;
-    } 
-    else 
-    {
-        /* Update RegisterBuffer */
-        *RegisterBuffer = Buffer;
     }
-    mutex_unlock(&Conegx->lock);
+    
     return 0;
 }
 
@@ -869,7 +885,7 @@ static int conegx_getRegister(void)
     mutex_lock(&Conegx->lock);
 
     Ret = regmap_read(Conegx->regmap, GET_RELAY_PORT, &Val);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read GET_RELAY_PORT Register\n");
@@ -881,7 +897,7 @@ static int conegx_getRegister(void)
     }
 
     Ret = regmap_read(Conegx->regmap, GET_LED_PORT_0, &Val);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read GET_LED_PORT_0 Register\n");
@@ -893,7 +909,7 @@ static int conegx_getRegister(void)
     }
 
     Ret = regmap_read(Conegx->regmap, GET_LED_PORT_1, &Val);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read GET_LED_PORT_1 Register\n");
@@ -906,7 +922,7 @@ static int conegx_getRegister(void)
 
     /* Get Fw Version */
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MAJOR, &FwVersionMaj);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MAJOR Register\n");
@@ -914,7 +930,7 @@ static int conegx_getRegister(void)
         return Ret;
     }
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MINOR_1, &FwVersionMin);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MINOR_1 Register\n");
@@ -922,7 +938,7 @@ static int conegx_getRegister(void)
         return Ret;
     }
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MINOR_2, &FwVersionPatch);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MINOR_2 Register\n");
@@ -938,7 +954,7 @@ static int conegx_getRegister(void)
 
     /* Get Button Lock Setting */
     Ret = regmap_read(Conegx->regmap, GET_BUTTON_LOCK, &Val);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read GET_BUTTON_LOCK Register\n");
@@ -1050,7 +1066,7 @@ static int conegx_probe(struct i2c_client *client) {
     /* Reading FW_VERSION Register to identify chip*/
     mutex_lock(&Conegx->lock);
     Ret = regmap_read(Conegx->regmap, DEVICE_DESCRIPTION, &Val);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read DEVICE_DESCRIPTION Register\n");
@@ -1126,7 +1142,7 @@ static int conegx_probe(struct i2c_client *client) {
 
     /* Set OS Ready flag ----------------------------------------------------*/
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     pr_info("conegx: Device Initialzed -> Setting OS_READY flag\n");
     if (Ret) {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
@@ -1153,7 +1169,7 @@ static int conegx_remove(struct i2c_client *client)
     int Ret;
     pr_info("conegx: Removing...-> disabling OS_READY flag\n");
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
-    mdelay(10);
+    mdelay(I2C_DELAY);
     if(Ret) 
     {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
@@ -1176,6 +1192,7 @@ static int reset_MSP430(void)
 
     pr_info("conegx: Resetting MSP430...");
 
+    //mutex_lock(&Conegx->lock);
     while(retries < MAX_RETRIES)
     {
         rv = gpio_request(RST_PIN, "MSP430_Reset");
@@ -1207,6 +1224,7 @@ static int reset_MSP430(void)
     {
         printk(KERN_ERR "conegx: Error requesting reset pin!");
         printk(KERN_ERR "conegx: Resetting MSP430 failed!");
+        //mutex_unlock(&Conegx->lock);
         return -1;
     }
 
@@ -1223,11 +1241,12 @@ static int reset_MSP430(void)
         
         /* Set OS Ready flag ----------------------------------------------------*/
         rv = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-        mdelay(10);
+        mdelay(I2C_DELAY);
         if(rv == 0) 
         {
             pr_info("conegx: Reset successful, OS_READY flag set\n");
             gpio_free(RST_PIN);
+            //mutex_unlock(&Conegx->lock);
             return 0;
         }
         else
@@ -1240,6 +1259,7 @@ static int reset_MSP430(void)
 
     gpio_free(RST_PIN);
     printk(KERN_ERR "conegx: Resetting MSP430 failed!");
+    //mutex_unlock(&Conegx->lock);
     return  -1;
 }
 
