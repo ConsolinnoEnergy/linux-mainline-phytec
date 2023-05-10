@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.2
+ * @version 1.1.3
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -306,7 +306,6 @@ static int conegx_direction_input(struct gpio_chip *chip, unsigned offset)
         return -1;
     }
     
-    //return conegx_get_gpio(chip,offset);
     return 0;
 }
 
@@ -530,7 +529,7 @@ static ssize_t write_proc_tstbuttonlock(
             return -1;
         }
 
-        printk(KERN_INFO "conegx: Setting ButtonLock to: %d \n",
+        pr_debug("conegx: Setting ButtonLock to: %d \n",
                (Conegx->TstButtonLock | (Conegx->RstButtonLock << 4)));
         *off = len;
 
@@ -623,7 +622,7 @@ static ssize_t write_proc_rstbuttonlock(
             return -1;
         }
 
-        printk(KERN_INFO "conegx: Setting ButtonLock to: %d \n",
+        pr_debug("conegx: Setting ButtonLock to: %d \n",
                (Conegx->TstButtonLock | (Conegx->RstButtonLock << 4)));
 
         *off = len;
@@ -793,7 +792,6 @@ static int conegxled_set_brightness(
         {
             /* Update RegisterBuffer */
             *RegisterBuffer = NewValue;
-            
         }
 
         mutex_unlock(&Conegx->lock);
@@ -1206,7 +1204,7 @@ static int reset_MSP430(void)
     {
         printk(KERN_ERR "conegx: Error requesting reset pin!");
         printk(KERN_ERR "conegx: Resetting MSP430 failed!");
-        //mutex_unlock(&Conegx->lock);
+        
         return -1;
     }
 
@@ -1228,7 +1226,7 @@ static int reset_MSP430(void)
         {
             pr_info("conegx: Reset successful, OS_READY flag set\n");
             gpio_free(RST_PIN);
-            //mutex_unlock(&Conegx->lock);
+            
             return 0;
         }
         else
@@ -1241,7 +1239,7 @@ static int reset_MSP430(void)
 
     gpio_free(RST_PIN);
     printk(KERN_ERR "conegx: Resetting MSP430 failed!");
-    //mutex_unlock(&Conegx->lock);
+    
     return  -1;
 }
 
