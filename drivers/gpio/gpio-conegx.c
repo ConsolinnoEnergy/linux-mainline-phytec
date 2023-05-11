@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.3
+ * @version 1.1.4
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -217,6 +217,7 @@ static int conegx_set_gpio(unsigned offset, int value)
     int Ret, RegisterAdress = 0;
     int InternalRegisterOffset;
     __u8 *RegisterBuffer = NULL;
+    unsigned int led_no;
 
     pr_debug("conegx: setting gpio %d %s to %d\n",
             offset, conegx_gpio_names[offset], value);
@@ -230,6 +231,46 @@ static int conegx_set_gpio(unsigned offset, int value)
         RegisterBuffer = &Conegx->SetRelayBuffer;
         Buffer = Conegx->SetRelayBuffer;
         InternalRegisterOffset = offset - IO_RELAY_1;
+
+        /* If a relay is closed or opened, the Firmware 
+        turns the associated LED on or off. We reflect this behaviour here. */
+        
+        switch(offset)
+        {
+            case IO_RELAY_1: // S_1
+            {
+                led_no = IO_LED_4;
+            }break;
+
+            case IO_RELAY_2: // S_2
+            {
+                led_no = IO_LED_5;
+            }break;
+
+            case IO_RELAY_3: // W_3
+            {
+                led_no = IO_LED_3;
+            }break;
+
+            case IO_RELAY_4: // W_4
+            {
+                led_no = IO_LED_6;
+            }break;
+
+            default:
+            {
+                return -1;
+            }            
+        }
+
+        if(value)
+        {
+            Conegx->SetLedPort0Buffer |= BIT(led_no);
+        }
+        else
+        {
+            Conegx->SetLedPort0Buffer &= ~(BIT(led_no));
+        }
     }
     else
     {
@@ -884,7 +925,7 @@ static int conegx_getRegister(void)
     } 
     else 
     {
-        Conegx->SetLedPort0Buffer = (char)(Val & 0xFF);
+        Conegx->SetLedPort0Buffer = (char)(Val & 0xFF) | BIT(IO_LED_2);
         pr_debug("conegx: GET_LED_PORT_0: 0x%x\n", Val);
     }
 
@@ -930,7 +971,7 @@ static int conegx_getRegister(void)
     sprintf(Conegx->FwVersion, "%d.%d.%d\n", FwVersionMaj, FwVersionMin,
             FwVersionPatch);
 
-    pr_debug("conegx: FirmwareVersion: %s", Conegx->FwVersion);
+    pr_info("conegx: FirmwareVersion: %s", Conegx->FwVersion);
 
     /* Get Button Lock Setting */
     Ret = regmap_read(Conegx->regmap, GET_BUTTON_LOCK, &Val);
@@ -963,7 +1004,7 @@ static int conegx_probe(struct i2c_client *client) {
     printk("conegx: Loaded in Testmode");
     #endif // DEBUG
     pr_info("conegx: Driver Version: %s",DRIVER_VERSION);
-    pr_info("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
+    pr_debug("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
 
     Conegx = devm_kzalloc(&client->dev, sizeof(*Conegx), GFP_KERNEL);
     if(!Conegx)
@@ -1219,6 +1260,16 @@ static int reset_MSP430(void)
 
         mdelay(100);        
         
+        /* Set Relays, LEDs will be updated by Status LED Controller. */
+        rv = regmap_write(Conegx->regmap, SET_RELAY_PORT, Conegx->SetRelayBuffer);
+        mdelay(I2C_DELAY);
+        if(rv < 0)
+        {
+            printk(KERN_ERR "conegx: Error setting relay port...");
+            retries++;
+            continue;
+        }
+
         /* Set OS Ready flag ----------------------------------------------------*/
         rv = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
         mdelay(I2C_DELAY);
