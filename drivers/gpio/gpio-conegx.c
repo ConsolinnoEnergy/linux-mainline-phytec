@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.4
+ * @version 1.1.5
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -925,7 +925,17 @@ static int conegx_getRegister(void)
     } 
     else 
     {
-        Conegx->SetLedPort0Buffer = (char)(Val & 0xFF) | BIT(IO_LED_2);
+        Conegx->SetLedPort0Buffer = (char)(Val & 0xFF);
+        /* in case LEDs were read (wrong) during blinking sequence after 
+        startup of MSP */
+        /* set PWR LED */
+        Conegx->SetLedPort0Buffer |= BIT(IO_LED_2);
+        /* reset Relay-LEDs and TLS-LED */
+        Conegx->SetLedPort0Buffer &=  ~(  BIT(IO_LED_1) 
+                                        | BIT(IO_LED_3)
+                                        | BIT(IO_LED_4)
+                                        | BIT(IO_LED_5)
+                                        | BIT(IO_LED_6));
         pr_debug("conegx: GET_LED_PORT_0: 0x%x\n", Val);
     }
 
@@ -1064,7 +1074,7 @@ static int conegx_probe(struct i2c_client *client) {
                 Conegx->irq);
     }
 
-    /* Setting up GPio IRQ */
+    /* Setting up GPIO IRQ */
     Err = gpiochip_irqchip_add_nested(&Conegx->chip,
                                       &Conegx->irq_chip,
                                       0,
@@ -1105,7 +1115,9 @@ static int conegx_probe(struct i2c_client *client) {
         pr_debug("conegx: valid DEVICE_DESCRIPTION (0x94)!\n");
     }
 
+    /* read Register the first time */
     Ret = conegx_getRegister();
+
 
     if(Ret) 
     {
@@ -1272,7 +1284,7 @@ static int reset_MSP430(void)
 
         /* Set OS Ready flag ----------------------------------------------------*/
         rv = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-        mdelay(I2C_DELAY);
+        mdelay(I2C_DELAY);              
         if(rv == 0) 
         {
             pr_info("conegx: Reset successful, OS_READY flag set\n");

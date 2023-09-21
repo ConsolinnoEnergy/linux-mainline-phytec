@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.4
+ * @version 1.1.5
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2023
@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.1.4"
+#define DRIVER_VERSION "1.1.5"
 
 /* Conegx Pins */
 /** 
@@ -46,34 +46,8 @@
 
 #define I2C_DELAY 3 // 3 ms
 
-/* Original CONEGX REGISTERMAP */
-// enum Conegx_Registermap {
-// GET_VOLTAGE_PORT   = 1, 
-// GET_INPUT_PORT 	      ,
-// SET_RELAY_PORT 	      ,
-// GET_RELAY_PORT 	      ,
-// SET_HBUS_PORT         ,
-// GET_HBUS_PORT         ,
-// SET_HBUS_DIRECTION    ,
-// GET_HBUS_DIRECTION 	  ,
-// SET_LED_PORT_0 		  ,
-// GET_LED_PORT_0 		  ,
-// SET_LED_PORT_1 		  ,
-// GET_LED_PORT_1 		  ,
-// ALERT 				  ,
-// SET_DEFAULT_PARAMETER ,
-// GET_DEFAULT_PARAMETER ,
-// FW_VERSION_MAJOR 	  ,
-// FW_VERSION_MINOR_1 	  ,
-// FW_VERSION_MINOR_2 	  ,
-// DEVICE_DESCRIPTION 	  ,
-// GET_POWER_FAILURE 	  ,
-// SET_OS_READY 		  ,
-// SET_BUTTON_LOCK 	  ,
-// GET_BUTTON_LOCK 	  ,
-// };
 
-/* New CONEGX REGISTERMAP */
+/* CONEGX REGISTERMAP */
 enum Conegx_Registermap {
 DEVICE_DESCRIPTION 	  ,
 FW_VERSION_MAJOR 	  ,
