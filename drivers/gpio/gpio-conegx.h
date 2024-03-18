@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.5
+ * @version 1.2.0
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2023
@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.1.5"
+#define DRIVER_VERSION "1.2.0"
 
 /* Conegx Pins */
 /** 
@@ -44,8 +44,7 @@
  */
 #define RST_PIN 66
 
-#define I2C_DELAY 3 // 3 ms
-
+#define FW_VERSION_STRING_SIZE 12
 
 /* CONEGX REGISTERMAP */
 enum Conegx_Registermap {
@@ -65,6 +64,15 @@ ALERT 				  ,
 SET_BUTTON_LOCK 	  ,
 GET_BUTTON_LOCK 	  ,
 
+/**
+ * @note Additional registers:
+ * GET_BOOT_MODE = 24,
+ * SET_RESET_STATUS = 25,
+ * 
+ * These registers are only used by the U-Boot 
+ * and are therefore not listed here.
+ */
+
 NUMBER_OF_CONEGX_REGISTERS,
 };
 
@@ -75,22 +83,22 @@ NUMBER_OF_CONEGX_REGISTERS,
 
 /* GPIO NUMBERS */
 enum GPIO_Numbers {
-IO_RELAY_1    ,
-IO_RELAY_2    ,
-IO_RELAY_3    ,
-IO_RELAY_4    ,
-IO_MRES_M2    ,
-IO_MRES_M1    ,
-IO_MRES_S2    ,
-IO_MRES_S1    ,
-IO_FLT_HBUS24 ,
-IO_FLT_HBUS   ,
-IO_RST_BUTTON ,
-IO_TST_BUTTON ,
-IO_PFI_1 	  ,
-IO_PFI_2 	  ,
-IO_PFI_3 	  ,
-IO_PFI_4 	  ,
+IO_RELAY_1     ,
+IO_RELAY_2     ,
+IO_RELAY_3     ,
+IO_RELAY_4     ,
+IO_RESERVED_1  , // Former IO_MRES_M2    
+IO_RESERVED_2  , // Former IO_MRES_M1    
+IO_RESERVED_3  , // Former IO_MRES_S2    
+IO_RESERVED_4  , // Former IO_MRES_S1    
+IO_RESERVED_5  , // Former IO_FLT_HBUS24 
+IO_RESERVED_6  , // Former IO_FLT_HBUS   
+IO_RST_BUTTON  ,
+IO_TST_BUTTON  ,
+IO_PFI_1 	   ,
+IO_PFI_2 	   ,
+IO_PFI_3 	   ,
+IO_PFI_4 	   ,
 
 NUMBER_OF_CONEGX_GPIOS,
 };
@@ -119,10 +127,8 @@ NUMBER_OF_CONEGX_LEDS,
 
 /* IRQ NUMBERS */
 enum IRQ_Numbers {
-POWER_FAILURE_INTERUPT 			    = 1,
-VOLTAGE_ALERT_INTERRUPT 			,
-VOLTAGE_NORMAL_INTERRUPT 			,
-POTENTIAL_FREE_INPUT_1_RISING_EDGE	= 14,
+NO_INTERRUPT						, 
+POTENTIAL_FREE_INPUT_1_RISING_EDGE	,
 POTENTIAL_FREE_INPUT_1_FALLING_EDGE	,
 POTENTIAL_FREE_INPUT_2_RISING_EDGE	,
 POTENTIAL_FREE_INPUT_2_FALLING_EDGE	,
@@ -130,18 +136,12 @@ POTENTIAL_FREE_INPUT_3_RISING_EDGE	,
 POTENTIAL_FREE_INPUT_3_FALLING_EDGE	,
 POTENTIAL_FREE_INPUT_4_RISING_EDGE	,
 POTENTIAL_FREE_INPUT_4_FALLING_EDGE	,
-FLT_HBUS_RISING_EDGE				,
-FLT_HBUS_FALLING_EDGE				,
-FLT_HBUS24_RISING_EDGE				,
-FLT_HBUS24_FALLING_EDGE				,
-MRES_M1_RISING_EDGE					,
-MRES_M1_FALLING_EDGE				,
-MRES_M2_RISING_EDGE					,
-MRES_M2_FALLING_EDGE				,
-MRES_S1_RISING_EDGE					,
-MRES_S1_FALLING_EDGE				,
-MRES_S2_RISING_EDGE					,
-MRES_S2_FALLING_EDGE				,
+I2C_EXPANDER_HARDWARE_MALFUNCTION   ,
+WATCHDOG_RESET                      ,
+RESET_BUTTON_PRESSED				,
+RESET_BUTTON_RELEASED				,
+TEST_BUTTON_PRESSED					,
+TEST_BUTTON_RELEASED				,
 };
 /* LED */
 #define NR_OF_LEDS 9
@@ -152,27 +152,15 @@ MRES_S2_FALLING_EDGE				,
  * @brief conegx_gpio_irq_map [GpioNr, Edge]
  * @description: maps IRQ Numbers to GPio Pins and Edges 
  */
-const int conegx_gpio_irq_map[20][2] = {
-	{IO_PFI_1, RISING_EDGE},	//	PFI 1
-	{IO_PFI_1, FALLING_EDGE}, //	PFI 1
-	{IO_PFI_2, RISING_EDGE},	//	PFI 2
-	{IO_PFI_2, FALLING_EDGE}, //	PFI 2
-	{IO_PFI_3, RISING_EDGE},	//	PFI 3
-	{IO_PFI_3, FALLING_EDGE}, //	PFI 3
-	{IO_PFI_4, RISING_EDGE},	//	PFI 4
-	{IO_PFI_4, FALLING_EDGE}, //	PFI 4
-	{IO_FLT_HBUS, RISING_EDGE},	//	FLT_HBUS
-	{IO_FLT_HBUS, FALLING_EDGE},	//	FLT_HBUS
-	{IO_FLT_HBUS24, RISING_EDGE},	//	FLT_HBUS_24
-	{IO_FLT_HBUS24, FALLING_EDGE},	//	FLT_HBUS_24
-	{IO_MRES_M1, RISING_EDGE},	//	MRES_M1
-	{IO_MRES_M1, FALLING_EDGE},	//	MRES_M1
-	{IO_MRES_M2, RISING_EDGE},	//	MRES_M2
-	{IO_MRES_M2, FALLING_EDGE},	//	MRES_M2
-	{IO_MRES_S1, RISING_EDGE},	//	MRES_S1
-	{IO_MRES_S1, FALLING_EDGE},	//	MRES_S1
-	{IO_MRES_S2, RISING_EDGE},	//	MRES_S2
-	{IO_MRES_S2, FALLING_EDGE},	//	MRES_S2
+const int conegx_gpio_irq_map[8][2] = {
+	{IO_PFI_1, RISING_EDGE} ,	//	PFI 1
+	{IO_PFI_1, FALLING_EDGE},   //	PFI 1
+	{IO_PFI_2, RISING_EDGE} ,	//	PFI 2
+	{IO_PFI_2, FALLING_EDGE},   //	PFI 2
+	{IO_PFI_3, RISING_EDGE} ,	//	PFI 3
+	{IO_PFI_3, FALLING_EDGE},   //	PFI 3
+	{IO_PFI_4, RISING_EDGE} ,	//	PFI 4
+	{IO_PFI_4, FALLING_EDGE},   //	PFI 4
 };
 
 /**
@@ -181,36 +169,36 @@ const int conegx_gpio_irq_map[20][2] = {
  * WRITE=  write acces only
  */
 const bool conegx_reg_access[NUMBER_OF_CONEGX_REGISTERS] = {
-	READ,  //	Get Device Description	
-	READ,  //	Get FW Version Major
-	READ,  //	Get FW Version Minor 1
-	READ,  //	Get FW Version Minor 2
-	WRITE, //	Set OS READy
-	READ,  //	Get Input Port
-	WRITE, //	Set Relay Port
-	READ,  //	Get Relay Port
-	WRITE, //	Set LED Port 0
-	READ,  //	Get LED Port 0
-	WRITE, //	Set LED Port 1
-	READ,  //	Get LED Port 1
-	READ,  //	Alert
-	WRITE, //	Set Button Lock
-	READ,  //	Get Button Lock	
+	READ , // Get Device Description	
+	READ , // Get FW Version Major
+	READ , // Get FW Version Minor 1
+	READ , // Get FW Version Minor 2
+	WRITE, // Set OS READy
+	READ , // Get Input Port
+	WRITE, // Set Relay Port
+	READ , // Get Relay Port
+	WRITE, // Set LED Port 0
+	READ , // Get LED Port 0
+	WRITE, // Set LED Port 1
+	READ , // Get LED Port 1
+	READ , // Alert
+	WRITE, // Set Button Lock
+	READ , // Get Button Lock	
 };
 
 const char *const conegx_gpio_names[NUMBER_OF_CONEGX_GPIOS] = {
-	"S_1",
-	"S_2",
-	"W_3",
-	"W_4",
-	"MRES_M2",
-	"MRES_M1",
-	"MRES_S2",
-	"MRES_S1",
-	"FLT_HBUS24",
-	"FLT_HBUS",
-	"RST_Butt",
-	"TST_Butt",
+	"S_1"		,
+	"S_2"		,
+	"W_3"		,
+	"W_4"		,
+	"Reserved_1", // Former "MRES_M2"
+	"Reserved_2", // Former "MRES_M1"
+	"Reserved_3", // Former "MRES_S2"
+	"Reserved_4", // Former "MRES_S1"
+	"Reserved_5", // Former "FLT_HBUS24"
+	"Reserved_6", // Former "FLT_HBUS"
+	"RST_Butt"  ,
+	"TST_Butt"  ,
 	"SwitchIN_1",
 	"SwitchIN_2",
 	"SwitchIN_3",
@@ -234,18 +222,18 @@ const int conegx_directions[NUMBER_OF_CONEGX_GPIOS] = {
 	OUTPUT,	// IO_RELAY_2   
 	OUTPUT,	// IO_RELAY_3   
 	OUTPUT,	// IO_RELAY_4   
-	INPUT,	// IO_MRES_M2   
-	INPUT,	// IO_MRES_M1   
-	INPUT,	// IO_MRES_S2   
-	INPUT,	// IO_MRES_S1   
-	INPUT,	// IO_FLT_HBUS24
-	INPUT,	// IO_FLT_HBUS  
-	INPUT,	// IO_RST_BUTTON
-	INPUT,	// IO_TST_BUTTON
-	INPUT,	// IO_PFI_1
-	INPUT,	// IO_PFI_2
-	INPUT,	// IO_PFI_3
-	INPUT	// IO_PFI_4
+	-1    ,	// Reserved_1
+	-1    ,	// Reserved_2
+	-1    ,	// Reserved_3
+	-1    ,	// Reserved_4
+	-1    ,	// Reserved_5
+	-1    ,	// Reserved_6
+	INPUT ,	// IO_RST_BUTTON
+	INPUT ,	// IO_TST_BUTTON
+	INPUT ,	// IO_PFI_1
+	INPUT ,	// IO_PFI_2
+	INPUT ,	// IO_PFI_3
+	INPUT ,	// IO_PFI_4
 };
 
 /**
@@ -262,7 +250,6 @@ struct conegx_led {
 	struct work_struct work;
 	u32 type;
 	unsigned int led_no;
-
 };
 
 /**
@@ -283,22 +270,16 @@ struct conegx
 
 	/* Register Buffers */
 	__u8 SetRelayBuffer;
-	__u8 SetHbusBuffer;
-	__u8 SetHbusDirectionBuffer;
 	__u8 SetLedPort0Buffer;
 	__u8 SetLedPort1Buffer;
 
 	/* Device Status Info */
 	uint LastInterruptNr;
-	int PowerFail;
-	int VoltageRange;
-	char FwVersion[12];
+	char FwVersion[FW_VERSION_STRING_SIZE];
 	int RelayDefaultSetting;
 	int TstButtonLock;
 	int RstButtonLock;
 	int IRQDeviceFileEnabled;
-	int IRQVoltageRangeEnabled;
-	int IRQPowerFailEnabled;
 };
 
 

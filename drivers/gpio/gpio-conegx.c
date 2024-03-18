@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.1.5
+ * @version 1.2.0
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021
@@ -23,7 +23,6 @@
 when enabled triggering MRES irqs will simulate IRQS for powerfail and 
 voltagerange
 */
-//#define CONEGX_TESTING
 
 #include "gpio-conegx.h"
 
@@ -131,12 +130,14 @@ EXPORT_SYMBOL_GPL(ConegxRegmap);
  * 
  * @param chip Gpio Chip
  * @param offset Gpio Number 
- * @return int  succesfull returns 0 , failure -1
+ * @return int returns 0 for output and 1 for input, and -1 in case of failure
  */
 static int conegx_get_direction(struct gpio_chip *chip, unsigned offset) 
 {
     int Direction;
-    
+
+    pr_debug("conegx: conegx_get_direction, offset: %d\n", offset);
+
     if((offset >= IO_RELAY_1) && (offset <= IO_PFI_4))
     {
         Direction = conegx_directions[offset];
@@ -163,7 +164,7 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
     int RegisterAdress = 0;
     bool readRegMap = false;
 
-    pr_debug("conegx: getting gpio %d %s\n", offset, conegx_gpio_names[offset]);
+    pr_debug("conegx: getting gpio %d %s\n", offset, conegx_gpio_names[offset]); 
 
     /* read GET RELAY PORT */
     if(IO_RELAY_1 <= offset && offset <= IO_RELAY_4) 
@@ -172,10 +173,20 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
         Buffer = Conegx->SetRelayBuffer;
     }
     /* read GET INPUT PINS */
-    else if(IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) 
+    else if(IO_RST_BUTTON <= offset && offset <= IO_PFI_4) 
     {
         RegisterAdress = GET_INPUT_PORT;
-        offset -= IO_FLT_HBUS24;
+
+        /**
+         * @note Why +2?
+         * 
+         * Because there used to be 2 more IOs which are no longer in use
+         * (FLT_HBUS and FLT_HBUS24). But they are still present as the first 
+         * 2 bits in the Input Port.
+         * 
+         * TODO: Adjust the Input Port and remove the unused bits.
+         */
+        offset = offset - IO_RST_BUTTON + 2;
         readRegMap = true;
     } 
     else 
@@ -187,8 +198,9 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
     if(readRegMap)
     {
         Ret = regmap_read(Conegx->regmap, RegisterAdress, &Buffer);
-        mdelay(I2C_DELAY);
+        
         pr_debug("conegx: Reading Register 0x%x: 0x%x\n", RegisterAdress, Buffer);
+
         if(Ret) 
         {
             printk(KERN_ERR "conegx: Error reading conegx gpio %d\n", offset);
@@ -201,7 +213,15 @@ static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset)
     }
 
     mutex_unlock(&Conegx->lock);
-    return !!(Buffer & BIT(offset));
+
+    if(Buffer & BIT(offset))
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 /**
@@ -215,14 +235,10 @@ static int conegx_set_gpio(unsigned offset, int value)
 {
     uint Buffer, NewValue;
     int Ret, RegisterAdress = 0;
-    int InternalRegisterOffset;
     __u8 *RegisterBuffer = NULL;
     unsigned int led_no;
 
-    pr_debug("conegx: setting gpio %d %s to %d\n",
-            offset, conegx_gpio_names[offset], value);
-
-    /* Shift offset/pin to conegx numbers */
+    pr_debug("conegx: setting gpio %d %s to %d\n", offset, conegx_gpio_names[offset], value);
 
     /* Get InternalRegister and InternalRegister Offset */
     if(IO_RELAY_1 <= offset && offset <= IO_RELAY_4) 
@@ -230,7 +246,6 @@ static int conegx_set_gpio(unsigned offset, int value)
         RegisterAdress = SET_RELAY_PORT;
         RegisterBuffer = &Conegx->SetRelayBuffer;
         Buffer = Conegx->SetRelayBuffer;
-        InternalRegisterOffset = offset - IO_RELAY_1;
 
         /* If a relay is closed or opened, the Firmware 
         turns the associated LED on or off. We reflect this behaviour here. */
@@ -280,11 +295,11 @@ static int conegx_set_gpio(unsigned offset, int value)
     /* Modify Bits in Buffer */
     if(value)
     {
-        NewValue = Buffer | BIT(InternalRegisterOffset);
+        NewValue = Buffer | BIT(offset);
     }
     else
     {
-        NewValue = Buffer & ~(BIT(InternalRegisterOffset));
+        NewValue = Buffer & ~(BIT(offset));
     }
     /* Write buffer to Register if the buffer changed.*/
     //if(NewValue != Buffer)
@@ -292,8 +307,9 @@ static int conegx_set_gpio(unsigned offset, int value)
     {
         mutex_lock(&Conegx->lock);
         Ret = regmap_write(Conegx->regmap, RegisterAdress, NewValue);
-        mdelay(I2C_DELAY);
+        
         pr_debug("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, NewValue);
+
         if(Ret) 
         {
             printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
@@ -338,8 +354,7 @@ static void set_gpio(struct gpio_chip *chip, unsigned offset, int value)
  */
 static int conegx_direction_input(struct gpio_chip *chip, unsigned offset) 
 {
-    pr_debug("conegx: setting direction INPUT for gpio %d %s\n",
-            offset, conegx_gpio_names[offset]);
+    pr_debug("conegx: setting direction INPUT for gpio %d %s\n", offset, conegx_gpio_names[offset]);
 
     /* Return error for Relais Outputs */
     if(IO_RELAY_1 <= offset && offset <= IO_RELAY_4) 
@@ -366,8 +381,10 @@ static int conegx_direction_output(
     pr_debug("conegx: setting direction OUTPUT for gpio %d %s\n",
             offset, conegx_gpio_names[offset]);
 
-    if(IO_FLT_HBUS24 <= offset && offset <= IO_PFI_4) 
+    if(IO_RESERVED_1 <= offset && offset <= IO_PFI_4) 
     {
+        pr_debug("conegx: invalid offset %d", offset);
+
         return -1;
     }
     // set actual gpio values
@@ -398,17 +415,33 @@ static ssize_t con_devfile_read(
 
     /* Wait for Change */
     pr_debug("conegx: Someone is now listening to DevFile for IRQ numbers\n");
+
     Conegx->IRQDeviceFileEnabled = 1;
     InterruptArrived = 0;
-    wait_event_interruptible(IrSleepingQeue, InterruptArrived);
+
+    /**
+     * @brief sleep until a condition gets true
+     * 
+     * The process is put to sleep (TASK_INTERRUPTIBLE) until the condition evaluates to true
+     * or a signal is received.
+     * 
+     * The condition is checked each time the waitqueue wq is woken up.
+     * 
+     * @param wq the waitqueue to wait on
+     * @param condition a C expression for the event to wait for
+     * @return -ERESTARTSYS if it was interrupted by a signal 
+     * and 0 if condition evaluated to true.
+     */
+    wait_event_interruptible(
+        IrSleepingQeue,    // wq
+        InterruptArrived); // condition
 
     /* GetCharversion */
     sprintf(IRQNumberChar, "%-2d\n", Conegx->LastInterruptNr);
 
     // Get bytes read by subtracting return of copy_to_user (returns unread bytes)
 
-    BytesRead = BytesToRead - copy_to_user(user, IRQNumberChar + *offset,
-                                           BytesToRead);
+    BytesRead = BytesToRead - copy_to_user(user, IRQNumberChar + *offset, BytesToRead);
 
     // Set offset so that we can eventually reach the end of the file
     *offset += BytesRead;
@@ -482,11 +515,9 @@ static ssize_t read_proc_fwversion(
     }
 
     // Get bytes read by subtracting return of copy_to_user
-    BytesRead = BytesToRead - copy_to_user(buffer, Conegx->FwVersion + *offset,
-                                           BytesToRead);
+    BytesRead = BytesToRead - copy_to_user(buffer, Conegx->FwVersion + *offset, BytesToRead);
 
-    printk("conegx: Reading %d bytes Fw Version: %s\n",
-           BytesRead, Conegx->FwVersion);
+    printk("conegx: Reading %d bytes Fw Version: %s\n", BytesRead, Conegx->FwVersion);
 
     // Set offset so that we can eventually reach the end of the file
     *offset += BytesRead;
@@ -527,11 +558,9 @@ static ssize_t read_proc_tstbuttonlock(
     }
 
     // Get bytes read by subtracting return of copy_to_user
-    BytesRead = BytesToRead - copy_to_user(buffer, TstButtonLockChar + *offset,
-                                           BytesToRead);
+    BytesRead = BytesToRead - copy_to_user(buffer, TstButtonLockChar + *offset, BytesToRead);
 
-    printk("conegx: Reading %d bytes TstButon Range: %c\n",
-           BytesRead, TstButtonLockChar[0]);
+    printk("conegx: Reading %d bytes TstButon Range: %c\n", BytesRead, TstButtonLockChar[0]);
 
     // Set offset so that we can eventually reach the end of the file
     *offset += BytesRead;
@@ -555,6 +584,7 @@ static ssize_t write_proc_tstbuttonlock(
     {
         /* Negative error code. */
         pr_debug("conegx: Error converting ButtonLock RetVal = %d\n", Ret);
+        
         return Ret;
     } 
     else 
@@ -578,12 +608,10 @@ static ssize_t write_proc_tstbuttonlock(
         Ret = regmap_write(Conegx->regmap, SET_BUTTON_LOCK,
                            (Conegx->TstButtonLock |
                             (Conegx->RstButtonLock << 4)));
-        mdelay(I2C_DELAY);
+        
         if(Ret) 
         {
-            printk(KERN_ERR
-                   "conegx: Error writing to Register \
-							SET_BUTTON_LOCK\n");
+            printk(KERN_ERR "conegx: Error writing to Register SET_BUTTON_LOCK\n");
 
             reset_MSP430();
 
@@ -620,8 +648,7 @@ static ssize_t read_proc_rstbuttonlock(
     BytesRead = BytesToRead - copy_to_user(buffer,
                                            RstButtonLockChar + *offset,
                                            BytesToRead);
-    printk("conegx: Reading %d bytes TstButon Range: %c\n",
-           BytesRead, RstButtonLockChar[0]);
+    printk("conegx: Reading %d bytes TstButon Range: %c\n", BytesRead, RstButtonLockChar[0]);
 
     // Set offset so that we can eventually reach the end of the file
     *offset += BytesRead;
@@ -653,9 +680,7 @@ static ssize_t write_proc_rstbuttonlock(
         if(RstButtonLockBuffer == 1 || RstButtonLockBuffer == 0) 
         {
             /* Set Button Lock for Tst button */
-            pr_debug("conegx: ResetButtonLockbuffer = %lld\n",
-                    RstButtonLockBuffer);
-
+            pr_debug("conegx: ResetButtonLockbuffer = %lld\n", RstButtonLockBuffer);
             Conegx->RstButtonLock = RstButtonLockBuffer;
         } 
         else 
@@ -663,21 +688,18 @@ static ssize_t write_proc_rstbuttonlock(
             return -1;
         }
 
-        pr_debug("conegx: Setting ButtonLock to: %d \n",
-               (Conegx->TstButtonLock | (Conegx->RstButtonLock << 4)));
+        pr_debug("conegx: Setting ButtonLock to: %d \n", 
+            (Conegx->TstButtonLock | (Conegx->RstButtonLock << 4)));
 
         *off = len;
 
         /* Write Setting to Conegx */
-        Ret = regmap_write(Conegx->regmap, SET_BUTTON_LOCK,
-                           (Conegx->TstButtonLock |
-                            (Conegx->RstButtonLock << 4)));
-        mdelay(I2C_DELAY);
+        Ret = regmap_write(Conegx->regmap, SET_BUTTON_LOCK, 
+            (Conegx->TstButtonLock | (Conegx->RstButtonLock << 4)));
+        
         if(Ret) 
         {
-            printk(KERN_ERR
-                   "conegx: Error writing to Register \
-			SET_BUTTON_LOCK\n");
+            printk(KERN_ERR "conegx: Error writing to Register SET_BUTTON_LOCK\n");
 
             reset_MSP430();
 
@@ -699,67 +721,144 @@ static irqreturn_t conegx_irq(int irq, void *data)
     int ChildIRQ;
     int GpioNumber;
     int Edge;
+    bool reset_msp = false;
 
     mutex_lock(&Conegx->lock);
 
     /* Read Alert Register */
     Ret = regmap_read(Conegx->regmap, ALERT, &IrqNumber);
-    mdelay(I2C_DELAY);
+    
+    mutex_unlock(&Conegx->lock);
+
     if(Ret) 
     {
         printk(KERN_ERR "conegx: Error reading ALERT REGISTER\n");
+        
+        mutex_lock(&Conegx->lock);
+        reset_MSP430();
         mutex_unlock(&Conegx->lock);
+
         return Ret;
     }
 
-    mutex_unlock(&Conegx->lock);
     Conegx->LastInterruptNr = IrqNumber;
 
     pr_debug("conegx: IRQ detected. Interrupt Nr.: %d\n", IrqNumber);
 
     /* GPIO INTERRUPTS -------------------*/
-    if(IrqNumber >= POTENTIAL_FREE_INPUT_1_RISING_EDGE &&
-        IrqNumber <= MRES_S2_FALLING_EDGE) 
+    if((IrqNumber >= POTENTIAL_FREE_INPUT_1_RISING_EDGE) 
+    && (IrqNumber <= POTENTIAL_FREE_INPUT_4_FALLING_EDGE))
     {
         /* Get Gpio Number and Edge from IRQ Number */
-        GpioNumber = conegx_gpio_irq_map[IrqNumber -
-                                         POTENTIAL_FREE_INPUT_1_RISING_EDGE][0];
+        GpioNumber = conegx_gpio_irq_map[IrqNumber - POTENTIAL_FREE_INPUT_1_RISING_EDGE][0];
 
-        Edge = conegx_gpio_irq_map[IrqNumber -
-                                   POTENTIAL_FREE_INPUT_1_RISING_EDGE][1];
+        Edge = conegx_gpio_irq_map[IrqNumber - POTENTIAL_FREE_INPUT_1_RISING_EDGE][1];
 
-        pr_debug("conegx: Interrupt on GPIONR: %d",
-                GpioNumber);
+        pr_debug("conegx: Interrupt on GPIONR: %d", GpioNumber);
 
-        if(Edge) 
+        if(Edge == RISING_EDGE) 
         {
-            pr_debug("conegx: Rising Edge on %s\n",
-                    conegx_gpio_names[GpioNumber]);
+            pr_debug("conegx: Rising Edge on %s\n", conegx_gpio_names[GpioNumber]);
         } 
-        else 
+        else if (Edge == FALLING_EDGE)
         {
-            pr_debug("conegx: Falling Edge on %s\n",
-                    conegx_gpio_names[GpioNumber]);
+            pr_debug("conegx: Falling Edge on %s\n", conegx_gpio_names[GpioNumber]);
         }
-
-        /* This wakeups are just for testing */
-        #ifdef CONEGX_TESTING
-        VoltageInterruptArrived += 1;
-        PowerFailInterruptArrived += 1;      
-        #endif // DEBUG
-        
-        //#ifdef GPIOLIB_IRQCHIP
+   
         /* Trigger nested IRQ for GPIOS */
         ChildIRQ = irq_find_mapping(Conegx->chip.irq.domain, GpioNumber);
         pr_debug("conegx: handling childirq %d\n", ChildIRQ);
         handle_nested_irq(ChildIRQ);
+    }
+    /* WATCHDOG INTERRUPT -------------------*/
+    else if(IrqNumber == WATCHDOG_RESET)
+    {
+        /**
+         * @note Watchdog Interrupt
+         * 
+         * This means that the watchdog timer of the MSP430 has not been
+         * reset by the Conegx Firmware and therefore caused a reset. 
+         * We need to sync the register states with the Firmware.
+         */
 
-        //#endif
+        pr_debug("conegx: Watchdog Timer interrupt occured.\n");
+
+        /* Set OS Ready flag ----------------------------------------------------*/
+        mutex_lock(&Conegx->lock);
+        Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
+        mutex_unlock(&Conegx->lock);
+
+        if(Ret != 0) 
+        {
+            printk(KERN_ERR "conegx: Error setting OS Ready flag...");
+            reset_msp = true;
+        }
+
+        /* Set Relays and LEDs. */
+        mutex_lock(&Conegx->lock);
+        Ret = regmap_write(Conegx->regmap, SET_RELAY_PORT, Conegx->SetRelayBuffer);
+        mutex_unlock(&Conegx->lock);
+
+        if(Ret != 0)
+        {
+            printk(KERN_ERR "conegx: Error setting relay port...");
+            reset_msp = true;
+        }
+
+        mutex_lock(&Conegx->lock);
+        Ret = regmap_write(Conegx->regmap, SET_LED_PORT_0, Conegx->SetLedPort0Buffer);
+        mutex_unlock(&Conegx->lock);
+
+        if(Ret != 0)
+        {
+            printk(KERN_ERR "conegx: Error setting led port 0...");
+            reset_msp = true;
+        }
+
+        mutex_lock(&Conegx->lock);
+        Ret = regmap_write(Conegx->regmap, SET_LED_PORT_1, Conegx->SetLedPort1Buffer);
+        mutex_unlock(&Conegx->lock);
+
+        if(Ret != 0)
+        {
+            printk(KERN_ERR "conegx: Error setting led port 1...");
+            reset_msp = true;
+        }
+
+        if(reset_msp)
+        {
+            printk(KERN_ERR "conegx: Error handling Watchdog Timer interrupt...");
+            
+            mutex_lock(&Conegx->lock);
+            reset_MSP430();
+            mutex_unlock(&Conegx->lock);
+
+            return -1;
+        }
+    }
+    else if(IrqNumber == I2C_EXPANDER_HARDWARE_MALFUNCTION)
+    {
+        printk(KERN_ERR "conegx: I2C Expander Hardware Malfunction\n");
+    }
+    else if(IrqNumber == RESET_BUTTON_PRESSED)
+    {
+        pr_debug("conegx: Reset button pressed\n");
+    }
+    else if(IrqNumber == RESET_BUTTON_RELEASED)
+    {
+        pr_debug("conegx: Reset button released\n");
+    }
+    else if(IrqNumber == TEST_BUTTON_PRESSED)
+    {
+        pr_debug("conegx: Test button pressed\n");
+    }
+    else if(IrqNumber == TEST_BUTTON_RELEASED)
+    {
+        pr_debug("conegx: Test button released\n");
     }
 
     /* Check if any IRQ is enabled and wake up Sleeping Queue */
-    if(Conegx->IRQDeviceFileEnabled || Conegx->IRQVoltageRangeEnabled ||
-        Conegx->IRQPowerFailEnabled) 
+    if(Conegx->IRQDeviceFileEnabled) 
     {
         InterruptArrived += 1;
         wake_up(&IrSleepingQeue);
@@ -804,29 +903,33 @@ static int conegxled_set_brightness(
     if(value) 
     {
         NewValue = Buffer | BIT(InternalRegisterOffset);
+
         pr_debug("conegx: Turn ON LED Number: %d %s\n", led->led_no, led->name);
     } 
     else
     {
         NewValue = Buffer & ~(BIT(InternalRegisterOffset));
+
         pr_debug("conegx: Turn OFF LED Number: %d %s\n", led->led_no, led->name);
     }
     /* Write new value to Register if it has changed. */
+    /* TODO: why if(true)? */
     //if(NewValue != Buffer)
     if(true)
     {
         mutex_lock(&Conegx->lock);
         Ret = regmap_write(Conegx->regmap, RegisterAdress, NewValue);
-        mdelay(I2C_DELAY);
+        
         pr_debug("conegx: Writing Register 0x%x: 0x%x\n", RegisterAdress, NewValue);
+
         if(Ret) 
         {
-            printk(KERN_ERR "conegx: Error writing to Register 0x%x\n",
-                RegisterAdress);
+            printk(KERN_ERR "conegx: Error writing to Register 0x%x\n", RegisterAdress);
 
             reset_MSP430();
 
             mutex_unlock(&Conegx->lock);
+
             return -1;
         } 
         else 
@@ -853,6 +956,7 @@ static int unregister_leds(int NrOfLeds)
     {
         led_classdev_unregister(&Conegx->leds[i].ldev);
     }
+
     return 0;
 }
 
@@ -863,7 +967,9 @@ static int setup_leds(struct i2c_client *client)
 {
     unsigned int i;
     int Err;
+
     pr_debug("conegx: Setting up Leds\n");
+
     for (i = 0; i < NR_OF_LEDS; i++) 
     {
         struct conegx_led *Led = &Conegx->leds[i];
@@ -876,8 +982,7 @@ static int setup_leds(struct i2c_client *client)
         Err = led_classdev_register(&client->dev, &Led->ldev);
         if(Err < 0) 
         {
-            dev_err(&client->dev, "couldn't register LED %s\n",
-                    Led->ldev.name);
+            dev_err(&client->dev, "couldn't register LED %s\n", Led->ldev.name);
             unregister_leds(i);
             return -1;
         }
@@ -901,12 +1006,13 @@ static int conegx_getRegister(void)
     int FwVersionPatch;
 
     pr_debug("conegx: Collecting Device Infos:\n");
+
     /* Reading GPIO and LED States into buffers Register to identify chip */
 
     mutex_lock(&Conegx->lock);
 
     Ret = regmap_read(Conegx->regmap, GET_RELAY_PORT, &Val);
-    mdelay(I2C_DELAY);
+    
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read GET_RELAY_PORT Register\n");
@@ -914,11 +1020,12 @@ static int conegx_getRegister(void)
     else 
     {
         Conegx->SetRelayBuffer = (char)(Val & 0xFF);
+
         pr_debug("conegx: GET_RELAY_PORT: 0x%x\n", Val);
     }
 
     Ret = regmap_read(Conegx->regmap, GET_LED_PORT_0, &Val);
-    mdelay(I2C_DELAY);
+    
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read GET_LED_PORT_0 Register\n");
@@ -936,11 +1043,12 @@ static int conegx_getRegister(void)
                                         | BIT(IO_LED_4)
                                         | BIT(IO_LED_5)
                                         | BIT(IO_LED_6));
+
         pr_debug("conegx: GET_LED_PORT_0: 0x%x\n", Val);
     }
 
     Ret = regmap_read(Conegx->regmap, GET_LED_PORT_1, &Val);
-    mdelay(I2C_DELAY);
+    
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read GET_LED_PORT_1 Register\n");
@@ -948,12 +1056,13 @@ static int conegx_getRegister(void)
     else 
     {
         Conegx->SetLedPort1Buffer = (char)(Val & 0xFF);
+
         pr_debug("conegx: GET_LED_PORT_1: 0x%x\n", Val);
     }
 
     /* Get Fw Version */
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MAJOR, &FwVersionMaj);
-    mdelay(I2C_DELAY);
+    
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MAJOR Register\n");
@@ -961,7 +1070,7 @@ static int conegx_getRegister(void)
         return Ret;
     }
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MINOR_1, &FwVersionMin);
-    mdelay(I2C_DELAY);
+    
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MINOR_1 Register\n");
@@ -969,7 +1078,7 @@ static int conegx_getRegister(void)
         return Ret;
     }
     Ret = regmap_read(Conegx->regmap, FW_VERSION_MINOR_2, &FwVersionPatch);
-    mdelay(I2C_DELAY);
+    
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read FW_VERSION_MINOR_2 Register\n");
@@ -978,14 +1087,13 @@ static int conegx_getRegister(void)
     }
 
     /* Create Character Version of String */
-    sprintf(Conegx->FwVersion, "%d.%d.%d\n", FwVersionMaj, FwVersionMin,
-            FwVersionPatch);
+    sprintf(Conegx->FwVersion, "%d.%d.%d\n", FwVersionMaj, FwVersionMin, FwVersionPatch);
 
     pr_info("conegx: FirmwareVersion: %s", Conegx->FwVersion);
 
     /* Get Button Lock Setting */
     Ret = regmap_read(Conegx->regmap, GET_BUTTON_LOCK, &Val);
-    mdelay(I2C_DELAY);
+    
     if(Ret) 
     {
         printk(KERN_ERR "conegx: can't read GET_BUTTON_LOCK Register\n");
@@ -994,8 +1102,9 @@ static int conegx_getRegister(void)
     }
     Conegx->TstButtonLock = (Val & 0x1);
     Conegx->RstButtonLock = (Val & 0x10) >> 0x4;
-    pr_debug("conegx: RstButtonLock: %d", Conegx->RstButtonLock);
-    pr_debug("conegx: TstButtonLock: %d", Conegx->TstButtonLock);
+
+    pr_debug("conegx: RstButtonLock: %d\n", Conegx->RstButtonLock);
+    pr_debug("conegx: TstButtonLock: %d\n", Conegx->TstButtonLock);
 
     mutex_unlock(&Conegx->lock);
     return 0;
@@ -1010,15 +1119,16 @@ static int conegx_probe(struct i2c_client *client) {
     unsigned int Val;
     unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_RISING;
 
-    #ifdef CONEGX_TESTING
-    printk("conegx: Loaded in Testmode");
-    #endif // DEBUG
-    pr_info("conegx: Driver Version: %s",DRIVER_VERSION);
+    pr_debug("conegx: Loaded in debug mode");
     pr_debug("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
 
+    pr_info("conegx: Driver Version: %s",DRIVER_VERSION);
+    
     Conegx = devm_kzalloc(&client->dev, sizeof(*Conegx), GFP_KERNEL);
+
     if(!Conegx)
     {
+        printk(KERN_ERR "conegx: can't allocate managed device\n");
         return -ENOMEM;
     }
 
@@ -1049,6 +1159,7 @@ static int conegx_probe(struct i2c_client *client) {
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't add GPIO chip\n");
+        return Ret;
     }
 
     mutex_init(&Conegx->lock);
@@ -1058,28 +1169,60 @@ static int conegx_probe(struct i2c_client *client) {
 
     /* IRQ -----------------------------------------------------------------*/
 
-    Ret = devm_request_threaded_irq(Conegx->chip.parent, Conegx->irq, NULL,
-                                    conegx_irq,
-                                    IrqFlags, "conegxirq", Conegx);
+    init_waitqueue_head(&IrSleepingQeue);
+
+    /**
+     * @brief allocate an interrupt line for a managed device
+     * 
+     * Except for the extra argument, this function takes the same arguments 
+     * and performs the same function as request_irq(). 
+     * 
+     * IRQs requested with this function will be automatically freed on driver detach.
+     * 
+     * If an IRQ allocated with this function needs to be freed separately, 
+     * devm_free_irq() must be used.
+     * 
+     * @param dev device to request interrupt for
+     * @param irq Interrupt line to allocate
+     * @param handler Function to be called when the IRQ occurs
+     * @param thread_fn function to be called in a threaded interrupt context.
+     * @param irqflags Interrupt type flags
+     * @param devname An ascii name for the claiming device
+     * @param dev_id A cookie passed back to the handler function
+     * 
+     * @return 0 if successfull, other value in case of error.
+     */
+    Ret = devm_request_threaded_irq(
+        Conegx->chip.parent, //dev
+        Conegx->irq,         //irq
+        NULL,                //handler
+        conegx_irq,          //thread_fn
+        IrqFlags,            //irqflags
+        "conegxirq",         //devname
+        Conegx);             //dev_id
 
     if(Ret != 0) 
     {
-        dev_err(Conegx->dev, "conegx: unable to request IRQ#%d: %d\n",
-                Conegx->irq, Ret);
+        dev_err(
+            Conegx->dev, 
+            "conegx: unable to request IRQ#%d: %d\n",
+            Conegx->irq, 
+            Ret);
+
         return Ret;
-    } 
+    }   
     else 
     {
-        pr_debug("conegx: registered IRQ # %d\n",
-                Conegx->irq);
+        pr_debug("conegx: registered IRQ # %d\n", Conegx->irq);
     }
 
     /* Setting up GPIO IRQ */
-    Err = gpiochip_irqchip_add_nested(&Conegx->chip,
-                                      &Conegx->irq_chip,
-                                      0,
-                                      handle_edge_irq,
-                                      IRQ_TYPE_NONE);
+    Err = gpiochip_irqchip_add_nested(
+        &Conegx->chip,
+        &Conegx->irq_chip,
+        0,
+        handle_edge_irq,
+        IRQ_TYPE_NONE);
 
     Conegx->chip.irq.threaded = true;
 
@@ -1090,26 +1233,31 @@ static int conegx_probe(struct i2c_client *client) {
         return Err;
     }
 
-    gpiochip_set_nested_irqchip(&Conegx->chip,
-                                &Conegx->irq_chip,
-                                Conegx->irq);
+    gpiochip_set_nested_irqchip(
+        &Conegx->chip,
+        &Conegx->irq_chip,
+        Conegx->irq);
 
     /* Reading FW_VERSION Register to identify chip*/
     mutex_lock(&Conegx->lock);
+
     Ret = regmap_read(Conegx->regmap, DEVICE_DESCRIPTION, &Val);
-    mdelay(I2C_DELAY);
+    
     if(Ret < 0) 
     {
         printk(KERN_ERR "conegx: can't read DEVICE_DESCRIPTION Register\n");
 
         reset_MSP430();
     }
+
     mutex_unlock(&Conegx->lock);
+
     if(Val != 0x94) 
     {
         printk(KERN_ERR "conegx: DEVICE_DESCRIPTION wrong (!0x94): 0x%x\n", Val);
+
         return 1;
-    }
+    }    
     else
     {
         pr_debug("conegx: valid DEVICE_DESCRIPTION (0x94)!\n");
@@ -1117,7 +1265,6 @@ static int conegx_probe(struct i2c_client *client) {
 
     /* read Register the first time */
     Ret = conegx_getRegister();
-
 
     if(Ret) 
     {
@@ -1141,7 +1288,6 @@ static int conegx_probe(struct i2c_client *client) {
     /* LEDS -----------------------------------------------------------------*/
     setup_leds(client);
 
-    init_waitqueue_head(&IrSleepingQeue);
 
     if(alloc_chrdev_region(&ConDevNr, 0, 1, "conegx_device") < 0)
     {
@@ -1171,17 +1317,43 @@ static int conegx_probe(struct i2c_client *client) {
     {
         goto free_class;
     }
-    //dev_info(ConDevice, "mod_init");
 
-    /* Set OS Ready flag ----------------------------------------------------*/
+    /* Set OS Ready flag ----------------------------------------------------*/   
+    pr_debug("conegx: Setting OS Ready Flag\n");
+    mutex_lock(&Conegx->lock);
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-    mdelay(I2C_DELAY);
-    pr_info("conegx: Device Initialzed -> Setting OS_READY flag\n");
-    if (Ret) {
+    
+    if (Ret) 
+    {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
 
         reset_MSP430();
+
+        mutex_unlock(&Conegx->lock);
+
+        return 1;
     }
+
+    /* Turn On Power LED */
+    pr_debug("conegx: Turning On Power LED\n");
+
+    Ret = regmap_write(Conegx->regmap, SET_LED_PORT_0, 0x2);
+    if (Ret)
+    {
+        printk(KERN_ERR "conegx: Error turning on Power LED\n");
+
+        reset_MSP430();
+
+        mutex_unlock(&Conegx->lock);
+
+        return 1;
+    }
+    else
+    {
+        pr_info("conegx: Device Initialzed successfully\n");
+    }
+
+    mutex_unlock(&Conegx->lock);
 
     return 0;
 
@@ -1202,7 +1374,7 @@ static int conegx_remove(struct i2c_client *client)
     int Ret;
     pr_info("conegx: Removing...-> disabling OS_READY flag\n");
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
-    mdelay(I2C_DELAY);
+    
     if(Ret) 
     {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
@@ -1225,7 +1397,6 @@ static int reset_MSP430(void)
 
     pr_info("conegx: Resetting MSP430...");
 
-    //mutex_lock(&Conegx->lock);
     while(retries < MAX_RETRIES)
     {
         rv = gpio_request(RST_PIN, "MSP430_Reset");
@@ -1270,11 +1441,21 @@ static int reset_MSP430(void)
 
         gpio_set_value(RST_PIN, 1);
 
-        mdelay(100);        
+        mdelay(100); 
+
+        /* Set OS Ready flag ----------------------------------------------------*/
+        rv = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
+                      
+        if(rv < 0) 
+        {
+            pr_info("conegx: Error setting OS_READY flag...\n");
+            retries++;
+            continue;
+        }     
         
-        /* Set Relays, LEDs will be updated by Status LED Controller. */
+        /* Set Relays and LEDs. */
         rv = regmap_write(Conegx->regmap, SET_RELAY_PORT, Conegx->SetRelayBuffer);
-        mdelay(I2C_DELAY);
+        
         if(rv < 0)
         {
             printk(KERN_ERR "conegx: Error setting relay port...");
@@ -1282,22 +1463,31 @@ static int reset_MSP430(void)
             continue;
         }
 
-        /* Set OS Ready flag ----------------------------------------------------*/
-        rv = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-        mdelay(I2C_DELAY);              
-        if(rv == 0) 
+        rv = regmap_write(Conegx->regmap, SET_LED_PORT_0, Conegx->SetLedPort0Buffer);
+        
+        if(rv < 0)
         {
-            pr_info("conegx: Reset successful, OS_READY flag set\n");
+            printk(KERN_ERR "conegx: Error setting led port 0...");
+            retries++;
+            continue;
+        }
+
+        rv = regmap_write(Conegx->regmap, SET_LED_PORT_1, Conegx->SetLedPort1Buffer);
+        
+        if(rv < 0)
+        {
+            printk(KERN_ERR "conegx: Error setting led port 1...");
+            retries++;
+            continue;
+        }
+        else if(rv == 0)
+        {
+            pr_info("conegx: Reset successful\n");
+
             gpio_free(RST_PIN);
             
             return 0;
         }
-        else
-        {
-            printk(KERN_ERR "conegx: Error resetting MSP...");
-        }
-
-        retries++;
     }
 
     gpio_free(RST_PIN);
