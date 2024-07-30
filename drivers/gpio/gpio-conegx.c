@@ -2,10 +2,10 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.2.0
+ * @version 1.2.1
  * @date 2021-06-22
  * 
- * @copyright: Copyrigth (c) 2021
+ * @copyright: Copyrigth (c) 2021 - 2024
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
