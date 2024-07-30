@@ -65,6 +65,7 @@ static struct proc_dir_entry *ProcfsParent;
 
 /* Function Prototypes */
 static int reset_MSP430(void);
+static int handleReset(void);
 
 /*---------------GPIO Functions---------------*/
 static int conegx_get_direction(struct gpio_chip *chip, unsigned offset);
@@ -721,7 +722,14 @@ static irqreturn_t conegx_irq(int irq, void *data)
     int ChildIRQ;
     int GpioNumber;
     int Edge;
-    bool reset_msp = false;
+    
+    /**
+     * After a reset, the IR Line is pulled high by the pull-up resistor.
+     * In this case, reading the alert register results in an error as the MSP
+     * is not ready to communicate. Hence we wait 300ms in order for the MSP to
+     * complete its start-up routine. This will be changed in a later update.
+     */
+    msleep(300);
 
     mutex_lock(&Conegx->lock);
 
@@ -783,58 +791,39 @@ static irqreturn_t conegx_irq(int irq, void *data)
 
         pr_debug("conegx: Watchdog Timer interrupt occured.\n");
 
-        /* Set OS Ready flag ----------------------------------------------------*/
-        mutex_lock(&Conegx->lock);
-        Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-        mutex_unlock(&Conegx->lock);
+        Ret = handleReset();
 
-        if(Ret != 0) 
-        {
-            printk(KERN_ERR "conegx: Error setting OS Ready flag...");
-            reset_msp = true;
-        }
-
-        /* Set Relays and LEDs. */
-        mutex_lock(&Conegx->lock);
-        Ret = regmap_write(Conegx->regmap, SET_RELAY_PORT, Conegx->SetRelayBuffer);
-        mutex_unlock(&Conegx->lock);
-
-        if(Ret != 0)
-        {
-            printk(KERN_ERR "conegx: Error setting relay port...");
-            reset_msp = true;
-        }
-
-        mutex_lock(&Conegx->lock);
-        Ret = regmap_write(Conegx->regmap, SET_LED_PORT_0, Conegx->SetLedPort0Buffer);
-        mutex_unlock(&Conegx->lock);
-
-        if(Ret != 0)
-        {
-            printk(KERN_ERR "conegx: Error setting led port 0...");
-            reset_msp = true;
-        }
-
-        mutex_lock(&Conegx->lock);
-        Ret = regmap_write(Conegx->regmap, SET_LED_PORT_1, Conegx->SetLedPort1Buffer);
-        mutex_unlock(&Conegx->lock);
-
-        if(Ret != 0)
-        {
-            printk(KERN_ERR "conegx: Error setting led port 1...");
-            reset_msp = true;
-        }
-
-        if(reset_msp)
+        if(Ret == -1)
         {
             printk(KERN_ERR "conegx: Error handling Watchdog Timer interrupt...");
             
             mutex_lock(&Conegx->lock);
             reset_MSP430();
             mutex_unlock(&Conegx->lock);
-
-            return -1;
         }
+    }
+    else if (IrqNumber == POWER_ON_RESET)
+    {
+        /**
+         * @note PowerOn Reset Interrupt
+         * 
+         * This means that the MSP430 has seen a power on reset.
+         * If this happens during runtime, we need to sync the 
+         * register states with the Firmware.
+         */
+
+        pr_debug("conegx: PowerOn Reset interrupt occured.\n");
+
+        Ret = handleReset();
+
+        if(Ret == -1)
+        {
+            printk(KERN_ERR "conegx: Error handling PowerOn Reset interrupt...");
+            
+            mutex_lock(&Conegx->lock);
+            reset_MSP430();
+            mutex_unlock(&Conegx->lock);
+        }        
     }
     else if(IrqNumber == I2C_EXPANDER_HARDWARE_MALFUNCTION)
     {
@@ -856,6 +845,14 @@ static irqreturn_t conegx_irq(int irq, void *data)
     {
         pr_debug("conegx: Test button released\n");
     }
+    else if(IrqNumber >= NUMBER_OF_CONEGX_IRQS)
+    {
+        pr_info("conegx: Received unknown IRQ number: %d", IrqNumber);
+
+        mutex_lock(&Conegx->lock);
+        reset_MSP430();
+        mutex_unlock(&Conegx->lock);
+    }
 
     /* Check if any IRQ is enabled and wake up Sleeping Queue */
     if(Conegx->IRQDeviceFileEnabled) 
@@ -863,8 +860,68 @@ static irqreturn_t conegx_irq(int irq, void *data)
         InterruptArrived += 1;
         wake_up(&IrSleepingQeue);
     }
+
     return IRQ_HANDLED;
 }
+
+/**
+ * @brief handle either a watchdog or a power on reset
+ * 
+ * @return int returns -1 if handling the reset fails, 0 if success
+ */
+static int handleReset(void)
+{
+    int Ret;
+
+    /* Set OS Ready flag ----------------------------------------------------*/
+    pr_debug("conegx: Setting OS Ready...\n");
+    mutex_lock(&Conegx->lock);
+    Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
+    mutex_unlock(&Conegx->lock);
+
+    if(Ret != 0) 
+    {
+        printk(KERN_ERR "conegx: Error setting OS Ready flag while handling reset...");
+        return -1;
+    }
+
+    /* Set Relays and LEDs. */
+    pr_debug("conegx: Setting relays and LEDs...\n");
+    mutex_lock(&Conegx->lock);
+    Ret = regmap_write(Conegx->regmap, SET_RELAY_PORT, Conegx->SetRelayBuffer);
+    mutex_unlock(&Conegx->lock);
+
+    if(Ret != 0)
+    {
+        printk(KERN_ERR "conegx: Error setting relay port while handling reset...");
+        return -1;
+    }
+
+    mutex_lock(&Conegx->lock);
+    Ret = regmap_write(Conegx->regmap, SET_LED_PORT_0, Conegx->SetLedPort0Buffer);
+    mutex_unlock(&Conegx->lock);
+
+    if(Ret != 0)
+    {
+        printk(KERN_ERR "conegx: Error setting led port 0 while handling reset...");
+        return -1;
+    }
+
+    mutex_lock(&Conegx->lock);
+    Ret = regmap_write(Conegx->regmap, SET_LED_PORT_1, Conegx->SetLedPort1Buffer);
+    mutex_unlock(&Conegx->lock);
+
+    if(Ret != 0)
+    {
+        printk(KERN_ERR "conegx: Error setting led port 1 while handling reset...");
+        return -1;
+    }
+
+    pr_debug("conegx: Reset handled successfully.\n");
+
+    return 0;
+}
+
 /* LED -----------------------------------------------------------------------*/
 
 /**
