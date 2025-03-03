@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.2.1"
+#define DRIVER_VERSION "1.3.0"
 
 /* Conegx Pins */
 /** 
