@@ -723,14 +723,6 @@ static irqreturn_t conegx_irq(int irq, void *data)
     int GpioNumber;
     int Edge;
     
-    /**
-     * After a reset, the IR Line is pulled high by the pull-up resistor.
-     * In this case, reading the alert register results in an error as the MSP
-     * is not ready to communicate. Hence we wait 300ms in order for the MSP to
-     * complete its start-up routine. This will be changed in a later update.
-     */
-    msleep(300);
-
     mutex_lock(&Conegx->lock);
 
     /* Read Alert Register */
@@ -789,7 +781,7 @@ static irqreturn_t conegx_irq(int irq, void *data)
          * We need to sync the register states with the Firmware.
          */
 
-        pr_debug("conegx: Watchdog Timer interrupt occured.\n");
+        printk(KERN_ERR "conegx: Watchdog reset occured.");
 
         Ret = handleReset();
 
@@ -1174,7 +1166,7 @@ static int conegx_probe(struct i2c_client *client) {
     int Ret;
     int Err;
     unsigned int Val;
-    unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_RISING;
+    unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING;
 
     pr_debug("conegx: Loaded in debug mode");
     pr_debug("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
@@ -1460,6 +1452,7 @@ static int reset_MSP430(void)
 
         if(rv != 0)
         {
+            // TODO: Investigate
             gpio_free(RST_PIN);
             mdelay(100);
             retries++;
