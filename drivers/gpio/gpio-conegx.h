@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.3.2
+ * @version 1.3.3
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021-2025
@@ -32,7 +32,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.3.2"
+#define DRIVER_VERSION "1.3.3"
 
 /* Conegx Pins */
 /** 

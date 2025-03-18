@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.3.2
+ * @version 1.3.3
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021 - 2025
@@ -723,14 +723,6 @@ static irqreturn_t conegx_irq(int irq, void *data)
     int GpioNumber;
     int Edge;
     
-    /**
-     * After a reset, the IR Line is pulled high by the pull-up resistor.
-     * In this case, reading the alert register results in an error as the MSP
-     * is not ready to communicate. Hence we wait 300ms in order for the MSP to
-     * complete its start-up routine. This will be changed in a later update.
-     */
-    //msleep(300);
-
     mutex_lock(&Conegx->lock);
 
     /* Read Alert Register */
