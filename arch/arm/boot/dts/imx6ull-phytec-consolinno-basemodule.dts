@@ -175,7 +175,7 @@
 		#interrupt-cells = <2>;
 		
 		interrupt-parent = <&gpio3>;
-		interrupts = <3 0x1>; // Pin Type(1=Rising)
+		interrupts = <3 0x2>; // Pin Type(2=Falling)
 		
 	};
 

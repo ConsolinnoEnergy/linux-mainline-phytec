@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author A. Pietsch (a.pietsch@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.2.1
+ * @version 1.3.1
  * @date 2021-06-22
  * 
  * @copyright: Copyrigth (c) 2021 - 2024
@@ -1174,7 +1174,7 @@ static int conegx_probe(struct i2c_client *client) {
     int Ret;
     int Err;
     unsigned int Val;
-    unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_RISING;
+    unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING;
 
     pr_debug("conegx: Loaded in debug mode");
     pr_debug("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
@@ -1435,13 +1435,30 @@ static int conegx_remove(struct i2c_client *client)
     if(Ret) 
     {
         printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
-        //reset_MSP430();
     }
+
+    /* Remove proc entries */
+    remove_proc_entry("fwversion", ProcfsParent);
+    remove_proc_entry("tstbuttonlock", ProcfsParent);
+    remove_proc_entry("rstbuttonlock", ProcfsParent);
+    remove_proc_entry("resetmsp", ProcfsParent);
+    remove_proc_entry("conegx", NULL);
     proc_remove(ProcfsParent);
+
+    /* Free IRQ */
+    devm_free_irq(Conegx->dev, Conegx->irq, Conegx);
+
+    /* Destroy device */
     unregister_leds(NR_OF_LEDS);
     mutex_destroy(&Conegx->lock);
     device_destroy(ConDevClass, ConDevNr);
     class_destroy(ConDevClass);
+
+    /* Unregister char device */
+    cdev_del(ConDriverObject);
+    unregister_chrdev_region(ConDevNr, 1);
+
+    pr_debug("conegx: Device removed successfully\n");
 
     return 0;
 }
