@@ -175,8 +175,7 @@
 		#interrupt-cells = <2>;
 		
 		interrupt-parent = <&gpio3>;
-		interrupts = <3 0x2>; // Pin Type(2=Falling)
-		
+		interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
 	};
 
 
