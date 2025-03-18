@@ -729,7 +729,7 @@ static irqreturn_t conegx_irq(int irq, void *data)
      * is not ready to communicate. Hence we wait 300ms in order for the MSP to
      * complete its start-up routine. This will be changed in a later update.
      */
-    msleep(300);
+    //msleep(300);
 
     mutex_lock(&Conegx->lock);
 
