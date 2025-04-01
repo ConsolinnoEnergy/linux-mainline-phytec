@@ -106,6 +106,12 @@ static ssize_t read_proc_rstbuttonlock(
     size_t length, 
     loff_t *offset);
 
+static ssize_t read_proc_maintenancemode(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
 static ssize_t read_proc_resetmsp(
     struct file *filp, 
     char __user *buffer,
@@ -498,6 +504,15 @@ static struct file_operations proc_fops_resetmsp = {
 };
 
 /**
+ * @brief File Operation Struct for /proc/conegx/maintenance
+ */
+static struct file_operations proc_fops_maintenance = {
+
+    .read = read_proc_maintenancemode,
+
+};
+
+/**
  * @brief Read Function  for /proc/conegx/fwversion
  */
 static ssize_t read_proc_fwversion(
@@ -523,6 +538,48 @@ static ssize_t read_proc_fwversion(
     // Set offset so that we can eventually reach the end of the file
     *offset += BytesRead;
     return BytesRead;
+}
+
+static ssize_t read_proc_maintenancemode(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    int Ret, Val;
+    char MaintenanceModeChar[2];
+    int BytesRead;
+    int BytesToRead = 2 - *offset;    
+
+    /* Get Button Lock Setting */
+    Ret = regmap_read(Conegx->regmap, GET_BUTTON_LOCK, &Val);
+
+    if(Ret) 
+    {
+        printk(KERN_ERR "conegx: can't read GET_BUTTON_LOCK Register\n");
+        return Ret;
+    }
+
+    Conegx->MaintenanceMode = (Val & 0b10) >> 1;
+
+    MaintenanceModeChar[0] = (char)(Conegx->MaintenanceMode + '0');
+    MaintenanceModeChar[1] = '\n';
+
+    // If we are at the end of the file, STOP READING!
+    if(BytesToRead == 0) 
+    {
+        return BytesToRead;
+    }
+
+    BytesRead = BytesToRead - copy_to_user(
+        buffer,
+        MaintenanceModeChar + *offset,
+        BytesToRead);
+    printk("conegx: Reading %d bytes MaintenanceMode Range: %c\n", BytesRead, MaintenanceModeChar[0]);
+    
+    // Set offset so that we can eventually reach the end of the file
+    *offset += BytesRead;
+    return BytesRead;    
 }
 
 static ssize_t read_proc_resetmsp(
@@ -1151,9 +1208,11 @@ static int conegx_getRegister(void)
     }
     Conegx->TstButtonLock = (Val & 0x1);
     Conegx->RstButtonLock = (Val & 0x10) >> 0x4;
+    Conegx->MaintenanceMode = (Val & 0b01) >> 1;
 
     pr_debug("conegx: RstButtonLock: %d\n", Conegx->RstButtonLock);
     pr_debug("conegx: TstButtonLock: %d\n", Conegx->TstButtonLock);
+    pr_debug("conegx: Maintenance Mode: %d\n", Conegx->MaintenanceMode);
 
     mutex_unlock(&Conegx->lock);
     return 0;
@@ -1333,6 +1392,7 @@ static int conegx_probe(struct i2c_client *client) {
     proc_create("tstbuttonlock", 0666, ProcfsParent, &proc_fops_tstbuttonlock);
     proc_create("rstbuttonlock", 0666, ProcfsParent, &proc_fops_rstbuttonlock);
     proc_create("resetmsp", 0444, ProcfsParent, &proc_fops_resetmsp);
+    proc_create("maintenance", 0444, ProcfsParent, &proc_fops_maintenance);
 
     /* LEDS -----------------------------------------------------------------*/
     setup_leds(client);
@@ -1434,6 +1494,7 @@ static int conegx_remove(struct i2c_client *client)
     remove_proc_entry("tstbuttonlock", ProcfsParent);
     remove_proc_entry("rstbuttonlock", ProcfsParent);
     remove_proc_entry("resetmsp", ProcfsParent);
+    remove_proc_entry("maintenance", ProcfsParent);
     remove_proc_entry("conegx", NULL);
     proc_remove(ProcfsParent);
 

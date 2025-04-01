@@ -283,6 +283,7 @@ struct conegx
 	int TstButtonLock;
 	int RstButtonLock;
 	int IRQDeviceFileEnabled;
+	int MaintenanceMode;
 };
 
 
