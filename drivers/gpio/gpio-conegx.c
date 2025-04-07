@@ -112,6 +112,12 @@ static ssize_t read_proc_maintenancemode(
     size_t length, 
     loff_t *offset);
 
+static ssize_t write_proc_maintenancemode(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
 static ssize_t read_proc_resetmsp(
     struct file *filp, 
     char __user *buffer,
@@ -498,7 +504,7 @@ static struct file_operations proc_fops_fwversion = {
  * @brief File Operation Struct for /proc/conegx/resetmsp
  */
 static struct file_operations proc_fops_resetmsp = {
-
+    
     .read = read_proc_resetmsp,
 
 };
@@ -509,6 +515,7 @@ static struct file_operations proc_fops_resetmsp = {
 static struct file_operations proc_fops_maintenance = {
 
     .read = read_proc_maintenancemode,
+    .write = write_proc_maintenancemode,
 
 };
 
@@ -560,7 +567,7 @@ static ssize_t read_proc_maintenancemode(
         return Ret;
     }
 
-    Conegx->MaintenanceMode = (Val & 0b10) >> 1;
+    Conegx->MaintenanceMode = (Val & 0b100) >> 2;
 
     MaintenanceModeChar[0] = (char)(Conegx->MaintenanceMode + '0');
     MaintenanceModeChar[1] = '\n';
@@ -580,6 +587,58 @@ static ssize_t read_proc_maintenancemode(
     // Set offset so that we can eventually reach the end of the file
     *offset += BytesRead;
     return BytesRead;    
+}
+
+static ssize_t write_proc_maintenancemode(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    int Ret;
+    unsigned long long MaintenanceModeBuffer;
+    uint8_t Status;
+
+    Ret = kstrtoull_from_user(buffer, length, 10, &MaintenanceModeBuffer);
+    if(Ret) 
+    {
+        /* Negative error code. */
+        pr_debug("conegx: Error converting Maintenance Mode. RetVal = %d\n", Ret);
+        
+        return Ret;
+    } 
+    
+    /* Check if Value is in Range */
+    if(MaintenanceModeBuffer == 1 || MaintenanceModeBuffer == 0) 
+    {
+        /* Set Button Lock for Tst button */
+        Conegx->MaintenanceMode = MaintenanceModeBuffer;
+    } 
+    else 
+    {
+        return -1;
+    }
+
+    Status = Conegx->TstButtonLock | (Conegx->RstButtonLock << 1) | (Conegx->MaintenanceMode << 2);
+
+    pr_debug("conegx: Setting Status Register to: %d \n", Status);
+
+    *offset = length;
+
+    /* Write Setting to Conegx */
+    Ret = regmap_write(Conegx->regmap, SET_BUTTON_LOCK, Status);
+    
+    if(Ret) 
+    {
+        printk(KERN_ERR "conegx: Error writing to Register SET_STATUS!\n");
+
+        reset_MSP430();
+
+        return -1;
+    }
+
+
+    return length;
 }
 
 static ssize_t read_proc_resetmsp(
@@ -1206,9 +1265,9 @@ static int conegx_getRegister(void)
         mutex_unlock(&Conegx->lock);
         return Ret;
     }
-    Conegx->TstButtonLock = (Val & 0x1);
-    Conegx->RstButtonLock = (Val & 0x10) >> 0x4;
-    Conegx->MaintenanceMode = (Val & 0b01) >> 1;
+    Conegx->TstButtonLock = (Val & 0b1);
+    Conegx->RstButtonLock = (Val & 0b10) >> 1;
+    Conegx->MaintenanceMode = (Val & 0b100) >> 2;
 
     pr_debug("conegx: RstButtonLock: %d\n", Conegx->RstButtonLock);
     pr_debug("conegx: TstButtonLock: %d\n", Conegx->TstButtonLock);
@@ -1388,11 +1447,12 @@ static int conegx_probe(struct i2c_client *client) {
     }
 
     /*Creating Proc entry under "/proc/etx/" */
+    /* TODO: only root should be able to read/write */
     proc_create("fwversion", 0444, ProcfsParent, &proc_fops_fwversion);
     proc_create("tstbuttonlock", 0666, ProcfsParent, &proc_fops_tstbuttonlock);
     proc_create("rstbuttonlock", 0666, ProcfsParent, &proc_fops_rstbuttonlock);
     proc_create("resetmsp", 0444, ProcfsParent, &proc_fops_resetmsp);
-    proc_create("maintenance", 0444, ProcfsParent, &proc_fops_maintenance);
+    proc_create("maintenance", 0666, ProcfsParent, &proc_fops_maintenance);
 
     /* LEDS -----------------------------------------------------------------*/
     setup_leds(client);
