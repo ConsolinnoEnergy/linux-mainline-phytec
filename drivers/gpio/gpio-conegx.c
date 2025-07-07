@@ -114,7 +114,7 @@ static ssize_t read_proc_maintenancemode(
 
 static ssize_t write_proc_maintenancemode(
     struct file *filp, 
-    char __user *buffer,
+    const char __user *buffer,
     size_t length, 
     loff_t *offset);
 
@@ -591,7 +591,7 @@ static ssize_t read_proc_maintenancemode(
 
 static ssize_t write_proc_maintenancemode(
     struct file *filp, 
-    char __user *buffer,
+    const char __user *buffer,
     size_t length, 
     loff_t *offset)
 {
@@ -616,6 +616,7 @@ static ssize_t write_proc_maintenancemode(
     } 
     else 
     {
+        pr_debug("conegx: Received invalid value for Maintenance Mode: %d\n", MaintenanceModeBuffer);
         return -1;
     }
 
