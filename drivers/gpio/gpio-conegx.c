@@ -124,6 +124,12 @@ static ssize_t read_proc_resetmsp(
     size_t length, 
     loff_t *offset);
 
+static ssize_t write_proc_resetleaflet(
+    struct file *filp, 
+    const char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
 /**
  * @brief Struct for Register Map Configuration
  * 
@@ -520,6 +526,13 @@ static struct file_operations proc_fops_maintenance = {
 };
 
 /**
+ * @brief File Operation Struct for /proc/conegx/resetleaflet
+ */
+static struct file_operations proc_fops_resetleaflet = {
+    .write = write_proc_resetleaflet,
+};
+
+/**
  * @brief Read Function  for /proc/conegx/fwversion
  */
 static ssize_t read_proc_fwversion(
@@ -616,7 +629,7 @@ static ssize_t write_proc_maintenancemode(
     } 
     else 
     {
-        pr_debug("conegx: Received invalid value for Maintenance Mode: %d\n", MaintenanceModeBuffer);
+        pr_debug("conegx: Received invalid value for Maintenance Mode: %d\n", (int)MaintenanceModeBuffer);
         return -1;
     }
 
@@ -651,6 +664,43 @@ static ssize_t read_proc_resetmsp(
     reset_MSP430();
 
     return 0;
+}
+
+static ssize_t write_proc_resetleaflet(
+    struct file *filp, 
+    const char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    char input[10];
+
+    if (length >= 10)
+        return -EINVAL;
+
+    memset(input, 0, sizeof(input));
+    if (copy_from_user(input, buffer, length))
+        return -EFAULT;
+
+    if (input[length - 1] == '\n')
+        input[length - 1] = '\0';
+    else
+        input[length] = '\0';
+
+    if (strcmp(input, "factory") == 0)
+    {
+        pr_debug("conegx: Received signal to trigger factory reset\n");
+    }
+    else if (strcmp(input, "system") == 0)
+    {
+        pr_debug("conegx: Received signal to trigger system reset\n");
+    }
+    else
+    {
+        pr_debug("conegx: Received invalid string in /proc/conegx/resetleaflet: %s\n", input);
+        return -1;
+    }
+
+    return length;
 }
 
 /**
@@ -1454,6 +1504,7 @@ static int conegx_probe(struct i2c_client *client) {
     proc_create("rstbuttonlock", 0666, ProcfsParent, &proc_fops_rstbuttonlock);
     proc_create("resetmsp", 0444, ProcfsParent, &proc_fops_resetmsp);
     proc_create("maintenance", 0666, ProcfsParent, &proc_fops_maintenance);
+    proc_create("resetleaflet", 0222, ProcfsParent, &proc_fops_resetleaflet);
 
     /* LEDS -----------------------------------------------------------------*/
     setup_leds(client);
@@ -1556,6 +1607,7 @@ static int conegx_remove(struct i2c_client *client)
     remove_proc_entry("rstbuttonlock", ProcfsParent);
     remove_proc_entry("resetmsp", ProcfsParent);
     remove_proc_entry("maintenance", ProcfsParent);
+    remove_proc_entry("resetleaflet", ProcfsParent);
     remove_proc_entry("conegx", NULL);
     proc_remove(ProcfsParent);
 
