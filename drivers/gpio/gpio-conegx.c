@@ -1560,7 +1560,7 @@ static int conegx_probe(struct i2c_client *client) {
     if(Val != 0x94) 
     {
         printk(KERN_ERR "conegx: DEVICE_DESCRIPTION wrong: 0x%x\n", Val);
-        return 1;
+        return -1;
     }    
     pr_debug("conegx: valid DEVICE_DESCRIPTION 0x94!\n");
 
