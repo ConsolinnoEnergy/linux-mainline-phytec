@@ -1510,7 +1510,8 @@ static int conegx_probe(struct i2c_client *client) {
     Ret = alloc_chrdev_region(&ConDevNr, 0, 1, "conegx_device");
     if(Ret)
     {
-        return -EIO;
+        printk(KERN_ERR "conegx: Error registering char device number!\n");
+        return Ret;
     }
 
     /* Anmeldeobjekt reservieren */
@@ -1547,6 +1548,7 @@ static int conegx_probe(struct i2c_client *client) {
     }
 
     /* Reading Device Description Register to identify chip*/
+    /* TODO: clean up in case of error! */
     Ret = regmap_read(Conegx->regmap, DEVICE_DESCRIPTION, &Val);
     if(Ret) 
     {
