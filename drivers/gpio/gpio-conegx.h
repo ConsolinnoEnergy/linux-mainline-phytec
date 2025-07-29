@@ -63,6 +63,7 @@ GET_LED_PORT_1    ,
 ALERT 		      ,
 SET_STATUS_PORT   ,
 GET_STATUS_PORT   ,
+SET_RESET         ,
 
 /**
  * @note Additional registers:
@@ -152,6 +153,8 @@ BIT_RSTBTN_LOCK  = 0b00000010,
 BIT_MAINTENANCE  = 0b00000100,
 };
 
+#define FACTORY_RESET 0xFA
+
 /* ------------------------------IRQ------------------------------ */
 
 /* IRQ EDGES */
@@ -219,7 +222,8 @@ const bool conegx_reg_access[NUMBER_OF_CONEGX_REGISTERS] = {
 	READ , // Get LED Port 1
 	READ , // Alert
 	WRITE, // Set Button Lock
-	READ , // Get Button Lock	
+	READ , // Get Button Lock
+	WRITE, // Set Reset
 };
 
 const char *const conegx_gpio_names[NUMBER_OF_CONEGX_GPIOS] = {
