@@ -632,7 +632,9 @@ static ssize_t write_proc_resetleaflet(
     char input[10];
 
     if (length >= 10)
+    {
         return -EINVAL;
+    }
 
     memset(input, 0, sizeof(input));
 
@@ -640,10 +642,8 @@ static ssize_t write_proc_resetleaflet(
     {
         return -EFAULT;
     }
-    
-    input[length] = '\0';
 
-    if (strcmp(input, "factory") == 0)
+    if (strncmp(input, "factory", 7) == 0)
     {
         pr_debug("conegx: Received signal to trigger factory reset\n");
         Ret = regmap_write(Conegx->regmap, SET_RESET, FACTORY_RESET);
@@ -654,7 +654,7 @@ static ssize_t write_proc_resetleaflet(
 
             reset_MSP430();
 
-            return -1;
+            return -EIO;
         }
     }
     else
