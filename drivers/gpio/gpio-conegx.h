@@ -1,6 +1,6 @@
 /**
  * @file gpio-conegx.h
- * @author A. Pietsch (a.pietsch@consolinno.de)
+ * @author S. Ardaya-Lieb (s.ardayalieb@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
  * @version 1.3.3
  * @date 2021-06-22
@@ -48,21 +48,22 @@
 
 /* CONEGX REGISTERMAP */
 enum Conegx_Registermap {
-DEVICE_DESCRIPTION 	  ,
-FW_VERSION_MAJOR 	  ,
-FW_VERSION_MINOR_1 	  ,
-FW_VERSION_MINOR_2 	  ,
-SET_OS_READY 		  ,
-GET_INPUT_PORT 	      ,
-SET_RELAY_PORT 	      ,
-GET_RELAY_PORT 	      ,
-SET_LED_PORT_0 		  ,
-GET_LED_PORT_0 		  ,
-SET_LED_PORT_1 		  ,
-GET_LED_PORT_1 		  ,
-ALERT 				  ,
-SET_BUTTON_LOCK 	  ,
-GET_BUTTON_LOCK 	  ,
+DEVICE_DESCRIPTION,
+FW_VERSION_MAJOR  ,
+FW_VERSION_MINOR_1,
+FW_VERSION_MINOR_2,
+SET_OS_READY      ,
+GET_INPUT_PORT 	  ,
+SET_RELAY_PORT 	  ,
+GET_RELAY_PORT 	  ,
+SET_LED_PORT_0    ,
+GET_LED_PORT_0    ,
+SET_LED_PORT_1    ,
+GET_LED_PORT_1    ,
+ALERT 		      ,
+SET_STATUS_PORT   ,
+GET_STATUS_PORT   ,
+SET_RESET         ,
 
 /**
  * @note Additional registers:
@@ -118,6 +119,41 @@ IO_RGBLED_1_3 ,
 NUMBER_OF_CONEGX_LEDS,
 };
 
+/* Port Bits */
+enum InputPortBits {
+BIT_RESET_BUTTON = 0b00000100,
+BIT_TEST_BUTTON  = 0b00001000,
+BIT_POTFREEINP_1 = 0b00010000,
+BIT_POTFREEINP_2 = 0b00100000,
+BIT_POTFREEINP_3 = 0b01000000,
+BIT_POTFREEINP_4 = 0b10000000,
+};
+enum RelayPortBits {
+BIT_RELAY_S1     = 0b00000001,
+BIT_RELAY_S2     = 0b00000010,
+BIT_RELAY_W3     = 0b00000100,
+BIT_RELAY_W4     = 0b00001000,
+};
+enum LEDPort0Bits {
+BIT_LED_TLS      = 0b00000001,
+BIT_LED_PWR      = 0b00000010,
+BIT_LED_W3       = 0b00000100,
+BIT_LED_S1       = 0b00001000,
+BIT_LED_S2       = 0b00010000,
+BIT_LED_W4       = 0b00100000,
+};
+enum LEDPort1Bits {
+BIT_RGBLED_11    = 0b00000001,
+BIT_RGBLED_12    = 0b00000010,
+BIT_RGBLED_13    = 0b00000100,
+};
+enum StatusPortBits {
+BIT_TSTBTN_LOCK  = 0b00000001,
+BIT_RSTBTN_LOCK  = 0b00000010,
+BIT_MAINTENANCE  = 0b00000100,
+};
+
+#define FACTORY_RESET 0xFA
 
 /* ------------------------------IRQ------------------------------ */
 
@@ -153,17 +189,17 @@ NUMBER_OF_CONEGX_IRQS               ,
 
 /**
  * @brief conegx_gpio_irq_map [GpioNr, Edge]
- * @description: maps IRQ Numbers to GPio Pins and Edges 
+ * @description: maps IRQ Numbers to GPio Pins, Edges and Bits 
  */
-const int conegx_gpio_irq_map[8][2] = {
-	{IO_PFI_1, RISING_EDGE} ,	//	PFI 1
-	{IO_PFI_1, FALLING_EDGE},   //	PFI 1
-	{IO_PFI_2, RISING_EDGE} ,	//	PFI 2
-	{IO_PFI_2, FALLING_EDGE},   //	PFI 2
-	{IO_PFI_3, RISING_EDGE} ,	//	PFI 3
-	{IO_PFI_3, FALLING_EDGE},   //	PFI 3
-	{IO_PFI_4, RISING_EDGE} ,	//	PFI 4
-	{IO_PFI_4, FALLING_EDGE},   //	PFI 4
+const int conegx_gpio_irq_map[8][3] = {
+	{IO_PFI_1, RISING_EDGE,  BIT_POTFREEINP_1},	//	PFI 1
+	{IO_PFI_1, FALLING_EDGE, BIT_POTFREEINP_1}, //	PFI 1
+	{IO_PFI_2, RISING_EDGE,  BIT_POTFREEINP_2},	//	PFI 2
+	{IO_PFI_2, FALLING_EDGE, BIT_POTFREEINP_2}, //	PFI 2
+	{IO_PFI_3, RISING_EDGE,  BIT_POTFREEINP_3},	//	PFI 3
+	{IO_PFI_3, FALLING_EDGE, BIT_POTFREEINP_3}, //	PFI 3
+	{IO_PFI_4, RISING_EDGE,  BIT_POTFREEINP_4},	//	PFI 4
+	{IO_PFI_4, FALLING_EDGE, BIT_POTFREEINP_4}, //	PFI 4
 };
 
 /**
@@ -186,7 +222,8 @@ const bool conegx_reg_access[NUMBER_OF_CONEGX_REGISTERS] = {
 	READ , // Get LED Port 1
 	READ , // Alert
 	WRITE, // Set Button Lock
-	READ , // Get Button Lock	
+	READ , // Get Button Lock
+	WRITE, // Set Reset
 };
 
 const char *const conegx_gpio_names[NUMBER_OF_CONEGX_GPIOS] = {
@@ -272,18 +309,17 @@ struct conegx
 	__u8 addr;
 
 	/* Register Buffers */
-	__u8 SetRelayBuffer;
-	__u8 SetLedPort0Buffer;
-	__u8 SetLedPort1Buffer;
+	__u8 InputPortBuffer;
+	__u8 RelayPortBuffer;
+	__u8 LedPort0Buffer;
+	__u8 LedPort1Buffer;
+	__u8 StatusPortBuffer;
 
 	/* Device Status Info */
 	uint LastInterruptNr;
 	char FwVersion[FW_VERSION_STRING_SIZE];
 	int RelayDefaultSetting;
-	int TstButtonLock;
-	int RstButtonLock;
 	int IRQDeviceFileEnabled;
-	int MaintenanceMode;
 };
 
 
