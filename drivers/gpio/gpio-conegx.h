@@ -2,8 +2,7 @@
  * @file gpio-conegx.h
  * @author S. Ardaya-Lieb (s.ardayalieb@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.3.3
- * @date 2021-06-22
+ * @version 1.4.0
  * 
  * @copyright: Copyrigth (c) 2021-2025
  * This program is free software: you can redistribute it and/or modify
@@ -32,7 +31,7 @@
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.3.3"
+#define DRIVER_VERSION "1.4.0"
 
 /* Conegx Pins */
 /** 
@@ -321,6 +320,5 @@ struct conegx
 	int RelayDefaultSetting;
 	int IRQDeviceFileEnabled;
 };
-
 
 #endif // CONEGX_DRIVER

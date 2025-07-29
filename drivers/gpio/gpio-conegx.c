@@ -2,8 +2,7 @@
  * @file gpio-conegx.c
  * @author S. Ardaya-Lieb (s.ardayalieb@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.3.3
- * @date 2021-06-22
+ * @version 1.4.0
  * 
  * @copyright: Copyrigth (c) 2021 - 2025
  * This program is free software: you can redistribute it and/or modify
