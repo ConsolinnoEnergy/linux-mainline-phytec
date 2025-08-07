@@ -55,10 +55,16 @@ static volatile int InterruptArrived = 0;
 
 /* Proc FS */
 static struct proc_dir_entry *ProcfsParent;
+static struct proc_dir_entry *ProcfsRegisters;
 
 /* Function Prototypes */
 static int reset_MSP430(void);
 static int handleReset(void);
+static int reg_to_user(
+    unsigned int reg, 
+    char __user *buffer,
+    unsigned char *conegx_buffer, 
+    loff_t *offset);
 
 /*---------------GPIO Functions---------------*/
 static int conegx_get_direction(struct gpio_chip *chip, unsigned offset);
@@ -120,6 +126,38 @@ static ssize_t read_proc_resetmsp(
 static ssize_t write_proc_resetleaflet(
     struct file *filp, 
     const char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
+/*---------------PROCFS Register Functions---------------*/
+
+static ssize_t read_proc_reg_input(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
+static ssize_t read_proc_reg_relay(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
+static ssize_t read_proc_reg_led_0(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
+static ssize_t read_proc_reg_led_1(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset);
+
+static ssize_t read_proc_reg_status(
+    struct file *filp, 
+    char __user *buffer,
     size_t length, 
     loff_t *offset);
 
@@ -423,55 +461,91 @@ static struct file_operations fops_devfile = {
  * @brief File Operation Struct for /proc/conegx/tstbuttonlock
  */
 static struct file_operations proc_fops_tstbuttonlock = {
-
+    .owner = THIS_MODULE,
     .read = read_proc_tstbuttonlock,
     .write = write_proc_tstbuttonlock,
-
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/rstbuttonlock
  */
 static struct file_operations proc_fops_rstbuttonlock = {
-
+    .owner = THIS_MODULE,
     .read = read_proc_rstbuttonlock,
     .write = write_proc_rstbuttonlock,
-
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/fwversion
  */
 static struct file_operations proc_fops_fwversion = {
-
+    .owner = THIS_MODULE,
     .read = read_proc_fwversion,
-
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/resetmsp
  */
 static struct file_operations proc_fops_resetmsp = {
-    
+    .owner = THIS_MODULE,
     .read = read_proc_resetmsp,
-
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/maintenance
  */
 static struct file_operations proc_fops_maintenance = {
-
+    .owner = THIS_MODULE,
     .read = read_proc_maintenancemode,
     .write = write_proc_maintenancemode,
-
 };
 
 /**
  * @brief File Operation Struct for /proc/conegx/resetleaflet
  */
 static struct file_operations proc_fops_resetleaflet = {
+    .owner = THIS_MODULE,
     .write = write_proc_resetleaflet,
+};
+
+/**
+ * @brief File Operation Struct for /proc/conegx/registers/input
+ */
+static struct file_operations proc_fops_reg_input = {
+    .owner = THIS_MODULE,
+    .read = read_proc_reg_input,
+};
+
+/**
+ * @brief File Operation Struct for /proc/conegx/registers/relay
+ */
+static struct file_operations proc_fops_reg_relay = {
+    .owner = THIS_MODULE,
+    .read = read_proc_reg_relay,
+};
+
+/**
+ * @brief File Operation Struct for /proc/conegx/registers/led_0
+ */
+static struct file_operations proc_fops_reg_led_0 = {
+    .owner = THIS_MODULE,
+    .read = read_proc_reg_led_0,
+};
+
+/**
+ * @brief File Operation Struct for /proc/conegx/registers/
+ */
+static struct file_operations proc_fops_reg_led_1 = {
+    .owner = THIS_MODULE,
+    .read = read_proc_reg_led_1,
+};
+
+/**
+ * @brief File Operation Struct for /proc/conegx/registers/
+ */
+static struct file_operations proc_fops_reg_status = {
+    .owner = THIS_MODULE,
+    .read = read_proc_reg_status,
 };
 
 /**
@@ -628,14 +702,12 @@ static ssize_t write_proc_resetleaflet(
     loff_t *offset)
 {
     int Ret;
-    char input[10];
+    char input[8] = {0}; // strlen("factory")
 
-    if (length >= 10)
+    if (length > 8)
     {
         return -EINVAL;
     }
-
-    memset(input, 0, sizeof(input));
 
     if (copy_from_user(input, buffer, length))
     {
@@ -863,6 +935,147 @@ static ssize_t write_proc_rstbuttonlock(
     mutex_unlock(&Conegx->lock);
     *off = len;
     return len;
+}
+
+int reg_to_user(
+    unsigned int reg, 
+    char __user *buffer,
+    unsigned char *conegx_buffer, 
+    loff_t *offset)
+{
+    int Ret;
+    unsigned int Val;
+    char str_buffer[6]; // "0x" + 2 digits + "\n\0"
+    int BytesRead;
+    int BytesToRead = 6 - *offset; 
+
+    pr_debug("conegx: Reading Register 0x%x\n", reg);
+    mutex_lock(&Conegx->lock);
+    Ret = regmap_read(Conegx->regmap, reg, &Val);
+    if(Ret) 
+    {
+        printk(KERN_ERR "conegx: Error reading Register 0x%x\n", reg);
+        reset_MSP430();
+        mutex_unlock(&Conegx->lock);
+        return Ret;
+    }
+
+    *conegx_buffer = (__u8)(Val & 0xFF);
+    mutex_unlock(&Conegx->lock);
+
+    snprintf(str_buffer, 6, "0x%02X\n", (Val & 0xFF));
+
+    /* If we are at the end of the file, STOP READING! */
+    if(BytesToRead == 0) 
+    {
+        return BytesToRead;
+    }
+
+    BytesRead = BytesToRead - copy_to_user(
+        buffer,
+        str_buffer + *offset,
+        BytesToRead);
+
+    pr_debug("conegx: User is reading %d bytes: %s", BytesRead, str_buffer);
+    
+    // Set offset so that we can eventually reach the end of the file
+    *offset += BytesRead;
+    return BytesRead; 
+}
+
+/**
+ * @brief Read Function for /proc/conegx/registers/input
+ */
+static ssize_t read_proc_reg_input(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    (void)filp;
+    (void)length;
+
+    return reg_to_user(
+        GET_INPUT_PORT, 
+        buffer, 
+        &(Conegx->InputPortBuffer), 
+        offset);
+}
+
+/**
+ * @brief Read Function for /proc/conegx/registers/relay
+ */
+static ssize_t read_proc_reg_relay(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    (void)filp;
+    (void)length;
+
+    return reg_to_user(
+        GET_RELAY_PORT, 
+        buffer, 
+        &(Conegx->RelayPortBuffer), 
+        offset);
+}
+
+/**
+ * @brief Read Function for /proc/conegx/registers/led_0
+ */
+static ssize_t read_proc_reg_led_0(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    (void)filp;
+    (void)length;
+
+    return reg_to_user(
+        GET_LED_PORT_0, 
+        buffer, 
+        &(Conegx->LedPort0Buffer), 
+        offset);
+}
+
+/**
+ * @brief Read Function for /proc/conegx/registers/led_1
+ */
+static ssize_t read_proc_reg_led_1(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    (void)filp;
+    (void)length;
+
+    return reg_to_user(
+        GET_LED_PORT_1,
+        buffer, 
+        &(Conegx->LedPort1Buffer), 
+        offset);
+}
+
+/**
+ * @brief Read Function for /proc/conegx/registers/status
+ */
+static ssize_t read_proc_reg_status(
+    struct file *filp, 
+    char __user *buffer,
+    size_t length, 
+    loff_t *offset)
+{
+    (void)filp;
+    (void)length;
+
+    return reg_to_user(
+        GET_STATUS_PORT, 
+        buffer, 
+        &(Conegx->StatusPortBuffer), 
+        offset);
 }
 
 /*---------------IRQ----------------------------------------------------------*/
@@ -1496,17 +1709,31 @@ static int conegx_probe(struct i2c_client *client) {
     ProcfsParent = proc_mkdir("conegx", NULL);
     if(ProcfsParent == NULL) 
     {
-        printk(KERN_ERR "conegx: Error creating proc entry!\n");
-        return -1;
+        printk(KERN_ERR "conegx: Error creating /proc/conegx!\n");
+        return -ENOMEM;
     }
 
-    /*Creating Proc entry under "/proc/etx/" */
+    ProcfsRegisters = proc_mkdir("registers", ProcfsParent);
+    if (ProcfsRegisters == NULL) 
+    {
+        printk(KERN_ERR "conegx: Error creating /proc/conegx/registers!\n");
+        return -ENOMEM;
+    }
+
+    /* Creating procfs entries under "/proc/conegx/" */
     proc_create("fwversion", 0444, ProcfsParent, &proc_fops_fwversion);
     proc_create("tstbuttonlock", 0666, ProcfsParent, &proc_fops_tstbuttonlock);
     proc_create("rstbuttonlock", 0666, ProcfsParent, &proc_fops_rstbuttonlock);
     proc_create("resetmsp", 0444, ProcfsParent, &proc_fops_resetmsp);
     proc_create("maintenance", 0666, ProcfsParent, &proc_fops_maintenance);
     proc_create("resetleaflet", 0222, ProcfsParent, &proc_fops_resetleaflet);
+
+    /* Creating procfs entries under "/proc/conegx/registers" */
+    proc_create("input", 0444, ProcfsRegisters, &proc_fops_reg_input);
+    proc_create("relay", 0444, ProcfsRegisters, &proc_fops_reg_relay);
+    proc_create("led_0", 0444, ProcfsRegisters, &proc_fops_reg_led_0);
+    proc_create("led_1", 0444, ProcfsRegisters, &proc_fops_reg_led_1);
+    proc_create("status", 0444, ProcfsRegisters, &proc_fops_reg_status);
 
     /* LEDS -----------------------------------------------------------------*/
     Ret = setup_leds(client);
@@ -1571,7 +1798,7 @@ static int conegx_probe(struct i2c_client *client) {
         printk(KERN_ERR "conegx: DEVICE_DESCRIPTION wrong: 0x%x\n", Val);
         return -1;
     }    
-    pr_debug("conegx: valid DEVICE_DESCRIPTION 0x94!\n");
+    pr_debug("conegx: Received valid DEVICE_DESCRIPTION 0x94!\n");
 
     /* Read registers the first time */
     Ret = conegx_getRegister();
@@ -1622,6 +1849,12 @@ static int conegx_remove(struct i2c_client *client)
     }
 
     /* Remove proc entries */
+    remove_proc_entry("input", ProcfsRegisters);
+    remove_proc_entry("relay", ProcfsRegisters);
+    remove_proc_entry("led_0", ProcfsRegisters);
+    remove_proc_entry("led_1", ProcfsRegisters);
+    remove_proc_entry("status", ProcfsRegisters);
+    remove_proc_entry("registers", ProcfsParent);
     remove_proc_entry("fwversion", ProcfsParent);
     remove_proc_entry("tstbuttonlock", ProcfsParent);
     remove_proc_entry("rstbuttonlock", ProcfsParent);
