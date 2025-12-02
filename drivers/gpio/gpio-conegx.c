@@ -702,9 +702,9 @@ static ssize_t write_proc_resetleaflet(
     loff_t *offset)
 {
     int Ret;
-    char input[8] = {0}; // strlen("factory")
+    char input[12] = {0};
 
-    if (length > 8)
+    if (length > 12)
     {
         return -EINVAL;
     }
@@ -718,6 +718,20 @@ static ssize_t write_proc_resetleaflet(
     {
         pr_debug("conegx: Received signal to trigger factory reset\n");
         Ret = regmap_write(Conegx->regmap, SET_RESET, FACTORY_RESET_COMMAND_ARG);
+        
+        if(Ret) 
+        {
+            printk(KERN_ERR "conegx: Error writing to Register SET_RESET!\n");
+
+            reset_MSP430();
+
+            return -EIO;
+        }
+    }
+    else if (strncmp(input, "maintenance", 11) == 0)
+    {
+        pr_debug("conegx: Received signal to trigger maintenance reset\n");
+        Ret = regmap_write(Conegx->regmap, SET_RESET, MAINTENANCE_RESET_COMMAND_ARG);
         
         if(Ret) 
         {

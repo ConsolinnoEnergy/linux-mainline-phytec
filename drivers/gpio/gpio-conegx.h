@@ -152,7 +152,8 @@ BIT_RSTBTN_LOCK  = 0b00000010,
 BIT_MAINTENANCE  = 0b00000100,
 };
 
-#define FACTORY_RESET_COMMAND_ARG 0xFA
+#define FACTORY_RESET_COMMAND_ARG     0xFA
+#define MAINTENANCE_RESET_COMMAND_ARG 0x01
 
 /* ------------------------------IRQ------------------------------ */
 
