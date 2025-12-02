@@ -717,7 +717,7 @@ static ssize_t write_proc_resetleaflet(
     if (strncmp(input, "factory", 7) == 0)
     {
         pr_debug("conegx: Received signal to trigger factory reset\n");
-        Ret = regmap_write(Conegx->regmap, SET_RESET, FACTORY_RESET);
+        Ret = regmap_write(Conegx->regmap, SET_RESET, FACTORY_RESET_COMMAND_ARG);
         
         if(Ret) 
         {
@@ -890,18 +890,19 @@ static ssize_t write_proc_rstbuttonlock(
     if(Ret) 
     {
         /* Negative error code. */
-        pr_debug("conegx: Error converting ButtonLock. RetVal = %d\n", Ret);
+        printk(KERN_ERR "conegx: Error converting ButtonLock. RetVal = %d\n", Ret);
         return Ret;
     } 
     
     /* Check if Value is in Range */
     if(!(RstButtonLockBuffer == 1 || RstButtonLockBuffer == 0))
     {
-        pr_debug("conegx: Received invalid value for Reset Button Lock: %d\n", (int)RstButtonLockBuffer);
+        printk(KERN_ERR "conegx: Received invalid value for Reset Button Lock: %d\n", (int)RstButtonLockBuffer);
         return -1;
     }
 
     mutex_lock(&Conegx->lock);
+
     /* Set Button Lock for Rst button */
     pr_debug("conegx: Setting Reset Button Lock = %d\n", (int)RstButtonLockBuffer);
     
@@ -1602,6 +1603,8 @@ static int conegx_probe(struct i2c_client *client) {
         return -ENOMEM;
     }
 
+    Conegx->MaintenanceFileExists = 0;
+
     Conegx->dev = &client->dev;
     Conegx->addr = client->addr;
     Conegx->irq = client->irq;
@@ -1725,7 +1728,6 @@ static int conegx_probe(struct i2c_client *client) {
     proc_create("tstbuttonlock", 0666, ProcfsParent, &proc_fops_tstbuttonlock);
     proc_create("rstbuttonlock", 0666, ProcfsParent, &proc_fops_rstbuttonlock);
     proc_create("resetmsp", 0444, ProcfsParent, &proc_fops_resetmsp);
-    proc_create("maintenance", 0666, ProcfsParent, &proc_fops_maintenance);
     proc_create("resetleaflet", 0222, ProcfsParent, &proc_fops_resetleaflet);
 
     /* Creating procfs entries under "/proc/conegx/registers" */
@@ -1808,6 +1810,13 @@ static int conegx_probe(struct i2c_client *client) {
         return Ret;
     }
 
+    /* Create maintenance file if flag is set */
+    if (Conegx->StatusPortBuffer & BIT_MAINTENANCE)
+    {
+        proc_create("maintenance", 0666, ProcfsParent, &proc_fops_maintenance);
+        Conegx->MaintenanceFileExists = 1;
+    }
+    
     /* Set OS Ready flag ----------------------------------------------------*/   
     pr_debug("conegx: Setting OS Ready Flag\n");
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
@@ -1859,8 +1868,13 @@ static int conegx_remove(struct i2c_client *client)
     remove_proc_entry("tstbuttonlock", ProcfsParent);
     remove_proc_entry("rstbuttonlock", ProcfsParent);
     remove_proc_entry("resetmsp", ProcfsParent);
-    remove_proc_entry("maintenance", ProcfsParent);
     remove_proc_entry("resetleaflet", ProcfsParent);
+
+    if (Conegx->MaintenanceFileExists)
+    {
+        remove_proc_entry("maintenance", ProcfsParent);
+    }
+
     remove_proc_entry("conegx", NULL);
     proc_remove(ProcfsParent);
 

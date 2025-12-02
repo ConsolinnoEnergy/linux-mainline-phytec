@@ -165,7 +165,7 @@
 		reg = <0x48>; /* I2C Adress */
 		gpio-controller;
 		#gpio-cells = <2>;
-
+		label = "conegx";
 		/*
 		pinctrl-names = "default";
 		pinctrl-0 = <&conegx_pins>;

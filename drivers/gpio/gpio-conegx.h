@@ -152,7 +152,7 @@ BIT_RSTBTN_LOCK  = 0b00000010,
 BIT_MAINTENANCE  = 0b00000100,
 };
 
-#define FACTORY_RESET 0xFA
+#define FACTORY_RESET_COMMAND_ARG 0xFA
 
 /* ------------------------------IRQ------------------------------ */
 
@@ -317,8 +317,8 @@ struct conegx
 	/* Device Status Info */
 	uint LastInterruptNr;
 	char FwVersion[FW_VERSION_STRING_SIZE];
-	int RelayDefaultSetting;
 	int IRQDeviceFileEnabled;
+	int MaintenanceFileExists;
 };
 
 #endif // CONEGX_DRIVER
