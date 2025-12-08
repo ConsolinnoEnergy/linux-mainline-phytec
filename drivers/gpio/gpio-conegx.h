@@ -26,6 +26,7 @@
 #include <linux/types.h>
 #include <linux/regmap.h>
 #include <linux/leds.h>
+#include <stdbool.h>
 
 #ifndef __CONEGX_DRIVER
 #define __CONEGX_DRIVER
