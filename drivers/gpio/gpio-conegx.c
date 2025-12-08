@@ -1422,52 +1422,61 @@ static int conegxled_set_brightness(
 /**
  * @brief Remove function for LEDS
  */
-static int unregister_leds(int NrOfLeds) 
+
+static void unregister_leds(unsigned int count)
 {
-    int i;
-    /* unregister already registered leds */
+    if (!count)
+        return;
 
-    for (i = 0; i < NrOfLeds; i++) 
-    {
-        led_classdev_unregister(&Conegx->leds[i].ldev);
+    /* Unregister in reverse to be safe */
+    while (count--) {
+        struct conegx_led *led = &Conegx->leds[count];
+
+        /* Avoid double-unregister: only if name or a flag indicates it was registered */
+        if (led->ldev.dev) {
+            led_classdev_unregister(&led->ldev);
+        }
     }
-
-    return 0;
 }
+
 
 /**
  * @brief Setup Function for LEDS
  */
-static int setup_leds(struct i2c_client *client) 
+
+static int setup_leds(struct i2c_client *client)
 {
     unsigned int i;
-    int Err;
+    int err;
 
-    pr_debug("conegx: Setting up Leds\n");
+    pr_debug("conegx: Setting up LEDs\n");
 
-    for (i = 0; i < NR_OF_LEDS; i++) 
-    {
-        struct conegx_led *Led = &Conegx->leds[i];
-        Led->led_no = i;
-        Led->name = conegx_led_names[i];
-        Led->ldev.brightness_set_blocking = conegxled_set_brightness;
-        Led->ldev.max_brightness = LED_FULL;
-        Led->ldev.name = conegx_led_names[i];
-        //Led->ldev.default_trigger = NULL;
-        Err = led_classdev_register(&client->dev, &Led->ldev);
-        if(Err < 0) 
-        {
-            dev_err(&client->dev, "couldn't register LED %s\n", Led->ldev.name);
-            unregister_leds(i);
-            return -1;
+    for (i = 0; i < NR_OF_LEDS; i++) {
+        struct conegx_led *led = &Conegx->leds[i];
+
+        /* Initialize per-LED fields */
+        led->led_no = i;
+        led->name = conegx_led_names[i];
+
+        /* Initialize LED classdev */
+        memset(&led->ldev, 0, sizeof(led->ldev));
+        led->ldev.name = led->name;
+        led->ldev.max_brightness = LED_FULL;
+        led->ldev.brightness_set_blocking = conegxled_set_brightness;
+        /* Optional: led->ldev.default_trigger = NULL; */
+
+        err = led_classdev_register(&client->dev, &led->ldev);
+        if (err) {
+            dev_err(&client->dev, "conegx: couldn't register LED %s (%d)\n",
+                    led->ldev.name ? led->ldev.name : "?", err);
+            unregister_leds(i); /* unregister the ones that succeeded */
+            return err;         /* return the real errno, not -1 */
         }
-        mutex_lock(&Led->ldev.led_access);
-		led_sysfs_enable(&Led->ldev);
-		mutex_unlock(&Led->ldev.led_access);
     }
 
     return 0;
 }
+
 
 /**
  * @brief Function that Mirrors all Conegx Registers to the driver at startup
@@ -1604,6 +1613,7 @@ static int conegx_probe(struct i2c_client *client) {
     unsigned int Val;
     unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING;
 
+    bool procfs_parent_created = false;
     bool procfs_created = false;
     bool leds_ok = false;
     bool chrdev_region_ok = false;
@@ -1727,19 +1737,21 @@ static int conegx_probe(struct i2c_client *client) {
         goto err_no_procfs; /* nothing to clean here other than returning */
     }
 
-    ProcfsRegisters = proc_mkdir("registers", ProcfsParent);
-    if (!ProcfsRegisters) {
-        dev_err(Conegx->dev, "conegx: Error creating /proc/conegx/registers!\n");
-        Ret = -ENOMEM;
-        goto err_procfs;
-    }
-
     /* Creating procfs entries under "/proc/conegx/" */
     proc_create("fwversion",      0444, ProcfsParent,    &proc_fops_fwversion);
     proc_create("tstbuttonlock",  0666, ProcfsParent,    &proc_fops_tstbuttonlock);
     proc_create("rstbuttonlock",  0666, ProcfsParent,    &proc_fops_rstbuttonlock);
     proc_create("resetmsp",       0444, ProcfsParent,    &proc_fops_resetmsp);
     proc_create("resetleaflet",   0222, ProcfsParent,    &proc_fops_resetleaflet);
+
+    procfs_parent_created = true;
+
+    ProcfsRegisters = proc_mkdir("registers", ProcfsParent);
+    if (!ProcfsRegisters) {
+        dev_err(Conegx->dev, "conegx: Error creating /proc/conegx/registers!\n");
+        Ret = -ENOMEM;
+        goto err_procfs;
+    }
 
     /* Creating procfs entries under "/proc/conegx/registers" */
     proc_create("input",  0444, ProcfsRegisters, &proc_fops_reg_input);
@@ -1883,22 +1895,40 @@ err_chrdev_region:
     }
 err_leds:
     if (leds_ok) {
-        /* If setup_leds() used non-devm registration, you must implement this: */
-        teardown_leds(client);
+        unregister_leds(NR_OF_LEDS);
         leds_ok = false;
     }
 err_procfs:
-    if (procfs_created) {
-        /* Clears /proc/conegx and everything beneath */
-        remove_proc_subtree("conegx", NULL);
+    if (procfs_created)
+    {
+        if (ProcfsRegisters) {
+            remove_proc_entry("input",     ProcfsRegisters);
+            remove_proc_entry("relay",     ProcfsRegisters);
+            remove_proc_entry("led_0",     ProcfsRegisters);
+            remove_proc_entry("led_1",     ProcfsRegisters);
+            remove_proc_entry("status",    ProcfsRegisters);
+            remove_proc_entry("registers", ProcfsParent);
+        }
         ProcfsRegisters = NULL;
-        ProcfsParent = NULL;
         procfs_created = false;
-    } else if (ProcfsParent) {
-        /* Parent created but flag not set: still remove safely */
-        remove_proc_subtree("conegx", NULL);
-        ProcfsRegisters = NULL;
+    }
+
+    if (procfs_parent_created) 
+    {
+        if (ProcfsParent) {
+            remove_proc_entry("fwversion",      ProcfsParent);
+            remove_proc_entry("tstbuttonlock",  ProcfsParent);
+            remove_proc_entry("rstbuttonlock",  ProcfsParent);
+            remove_proc_entry("resetmsp",       ProcfsParent);
+            remove_proc_entry("resetleaflet",   ProcfsParent);
+
+            if (Conegx->MaintenanceFileExists)
+                remove_proc_entry("maintenance", ProcfsParent);
+        }
+        remove_proc_entry("conegx", NULL);
+        proc_remove(ProcfsParent);
         ProcfsParent = NULL;
+        procfs_parent_created = false;
     }
 err_no_procfs:
     /* devm_* (kzalloc, regmap, gpiochip, irq) will be auto-cleaned on error */
@@ -1911,52 +1941,60 @@ err_no_procfs:
  */
 static int conegx_remove(struct i2c_client *client) 
 {
-    int Ret;
+    int ret;
 
-    pr_info("conegx: Removing...-> disabling OS_READY flag\n");
-    Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
-    if(Ret) 
-    {
-        printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
+    pr_info("conegx: Removing device — clearing OS_READY\n");
+    ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
+    if (ret) {
+        dev_warn(Conegx->dev,
+            "conegx: failed to clear OS_READY (%d); resetting MSP430\n", ret);
         reset_MSP430();
     }
 
-    /* Remove proc entries */
-    remove_proc_entry("input", ProcfsRegisters);
-    remove_proc_entry("relay", ProcfsRegisters);
-    remove_proc_entry("led_0", ProcfsRegisters);
-    remove_proc_entry("led_1", ProcfsRegisters);
-    remove_proc_entry("status", ProcfsRegisters);
-    remove_proc_entry("registers", ProcfsParent);
-    remove_proc_entry("fwversion", ProcfsParent);
-    remove_proc_entry("tstbuttonlock", ProcfsParent);
-    remove_proc_entry("rstbuttonlock", ProcfsParent);
-    remove_proc_entry("resetmsp", ProcfsParent);
-    remove_proc_entry("resetleaflet", ProcfsParent);
+    /* Remove proc entries under /proc/conegx */
+    if (ProcfsRegisters) {
+        remove_proc_entry("input",     ProcfsRegisters);
+        remove_proc_entry("relay",     ProcfsRegisters);
+        remove_proc_entry("led_0",     ProcfsRegisters);
+        remove_proc_entry("led_1",     ProcfsRegisters);
+        remove_proc_entry("status",    ProcfsRegisters);
+        remove_proc_entry("registers", ProcfsParent);
+        ProcfsRegisters = NULL;
+    }
 
-    if (Conegx->MaintenanceFileExists)
-    {
-        remove_proc_entry("maintenance", ProcfsParent);
+    if (ProcfsParent) {
+        remove_proc_entry("fwversion",      ProcfsParent);
+        remove_proc_entry("tstbuttonlock",  ProcfsParent);
+        remove_proc_entry("rstbuttonlock",  ProcfsParent);
+        remove_proc_entry("resetmsp",       ProcfsParent);
+        remove_proc_entry("resetleaflet",   ProcfsParent);
+
+        if (Conegx->MaintenanceFileExists)
+            remove_proc_entry("maintenance", ProcfsParent);
     }
 
     remove_proc_entry("conegx", NULL);
     proc_remove(ProcfsParent);
-
-    /* Free IRQ */
-    devm_free_irq(Conegx->dev, Conegx->irq, Conegx);
-
-    /* Destroy device */
+    ProcfsParent = NULL;
     unregister_leds(NR_OF_LEDS);
-    mutex_destroy(&Conegx->lock);
-    device_destroy(ConDevClass, ConDevNr);
-    class_destroy(ConDevClass);
 
-    /* Unregister char device */
-    cdev_del(ConDriverObject);
+    mutex_destroy(&Conegx->lock);
+
+    if (ConDevice)
+        device_destroy(ConDevClass, ConDevNr);
+    ConDevice = NULL;
+
+    if (ConDevClass)
+        class_destroy(ConDevClass);
+    ConDevClass = NULL;
+
+    if (ConDriverObject)
+        cdev_del(ConDriverObject);
+    ConDriverObject = NULL;
+
     unregister_chrdev_region(ConDevNr, 1);
 
     pr_debug("conegx: Device removed successfully\n");
-
     return 0;
 }
 

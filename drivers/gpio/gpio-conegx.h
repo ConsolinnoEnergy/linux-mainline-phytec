@@ -184,7 +184,7 @@ POWER_ON_RESET						,
 NUMBER_OF_CONEGX_IRQS               ,
 };
 /* LED */
-#define NR_OF_LEDS 9
+#define NR_OF_LEDS NUMBER_OF_CONEGX_LEDS
 #define LED_FULL 255
 
 
