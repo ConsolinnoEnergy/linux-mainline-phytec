@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author S. Ardaya-Lieb (s.ardayalieb@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.4.1
+ * @version 1.4.2
  * 
  * @copyright: Copyrigth (c) 2021 - 2025
  * This program is free software: you can redistribute it and/or modify
@@ -890,18 +890,19 @@ static ssize_t write_proc_rstbuttonlock(
     if(Ret) 
     {
         /* Negative error code. */
-        pr_debug("conegx: Error converting ButtonLock. RetVal = %d\n", Ret);
+        printk(KERN_ERR "conegx: Error converting ButtonLock. RetVal = %d\n", Ret);
         return Ret;
     } 
     
     /* Check if Value is in Range */
     if(!(RstButtonLockBuffer == 1 || RstButtonLockBuffer == 0))
     {
-        pr_debug("conegx: Received invalid value for Reset Button Lock: %d\n", (int)RstButtonLockBuffer);
+        printk(KERN_ERR "conegx: Received invalid value for Reset Button Lock: %d\n", (int)RstButtonLockBuffer);
         return -1;
     }
 
     mutex_lock(&Conegx->lock);
+
     /* Set Button Lock for Rst button */
     pr_debug("conegx: Setting Reset Button Lock = %d\n", (int)RstButtonLockBuffer);
     
@@ -1407,52 +1408,60 @@ static int conegxled_set_brightness(
 /**
  * @brief Remove function for LEDS
  */
-static int unregister_leds(int NrOfLeds) 
+
+static void unregister_leds(unsigned int count)
 {
-    int i;
-    /* unregister already registered leds */
+    if (!count)
+        return;
 
-    for (i = 0; i < NrOfLeds; i++) 
-    {
-        led_classdev_unregister(&Conegx->leds[i].ldev);
+    /* Unregister in reverse to be safe */
+    while (count--) {
+        struct conegx_led *led = &Conegx->leds[count];
+
+        /* Avoid double-unregister: only if name or a flag indicates it was registered */
+        if (led->ldev.dev) {
+            led_classdev_unregister(&led->ldev);
+        }
     }
-
-    return 0;
 }
+
 
 /**
  * @brief Setup Function for LEDS
  */
-static int setup_leds(struct i2c_client *client) 
+
+static int setup_leds(struct i2c_client *client)
 {
     unsigned int i;
-    int Err;
+    int err;
 
-    pr_debug("conegx: Setting up Leds\n");
+    pr_debug("conegx: Setting up LEDs\n");
 
-    for (i = 0; i < NR_OF_LEDS; i++) 
-    {
-        struct conegx_led *Led = &Conegx->leds[i];
-        Led->led_no = i;
-        Led->name = conegx_led_names[i];
-        Led->ldev.brightness_set_blocking = conegxled_set_brightness;
-        Led->ldev.max_brightness = LED_FULL;
-        Led->ldev.name = conegx_led_names[i];
-        //Led->ldev.default_trigger = NULL;
-        Err = led_classdev_register(&client->dev, &Led->ldev);
-        if(Err < 0) 
-        {
-            dev_err(&client->dev, "couldn't register LED %s\n", Led->ldev.name);
-            unregister_leds(i);
-            return -1;
+    for (i = 0; i < NR_OF_LEDS; i++) {
+        struct conegx_led *led = &Conegx->leds[i];
+
+        /* Initialize per-LED fields */
+        led->led_no = i;
+        led->name = conegx_led_names[i];
+
+        /* Initialize LED classdev */
+        memset(&led->ldev, 0, sizeof(led->ldev));
+        led->ldev.name = led->name;
+        led->ldev.max_brightness = LED_FULL;
+        led->ldev.brightness_set_blocking = conegxled_set_brightness;
+
+        err = led_classdev_register(&client->dev, &led->ldev);
+        if (err) {
+            dev_err(&client->dev, "conegx: couldn't register LED %s (%d)\n",
+                    led->ldev.name ? led->ldev.name : "?", err);
+            unregister_leds(i); /* unregister the ones that succeeded */
+            return err;
         }
-        mutex_lock(&Led->ldev.led_access);
-		led_sysfs_enable(&Led->ldev);
-		mutex_unlock(&Led->ldev.led_access);
     }
 
     return 0;
 }
+
 
 /**
  * @brief Function that Mirrors all Conegx Registers to the driver at startup
@@ -1589,56 +1598,64 @@ static int conegx_probe(struct i2c_client *client) {
     unsigned int Val;
     unsigned long IrqFlags = IRQF_ONESHOT | IRQF_TRIGGER_FALLING;
 
+    bool procfs_parent_created = false;
+    bool procfs_created = false;
+    bool leds_ok = false;
+    bool chrdev_region_ok = false;
+    bool cdev_added = false;
+    bool class_created = false;
+    bool device_created = false;
+
     pr_debug("conegx: Loaded in debug mode");
-    pr_debug("conegx: runnning probe for %s @ 0x%x", client->name, client->addr);
+    pr_debug("conegx: running probe for %s @ 0x%x", client->name, client->addr);
+    pr_info("conegx: Driver Version: %s", DRIVER_VERSION);
 
-    pr_info("conegx: Driver Version: %s",DRIVER_VERSION);
-    
     Conegx = devm_kzalloc(&client->dev, sizeof(*Conegx), GFP_KERNEL);
-
-    if(!Conegx)
-    {
-        printk(KERN_ERR "conegx: can't allocate managed device\n");
+    if (!Conegx) {
+        dev_err(&client->dev, "conegx: can't allocate managed device\n");
         return -ENOMEM;
     }
 
-    Conegx->dev = &client->dev;
+    Conegx->dev  = &client->dev;
     Conegx->addr = client->addr;
-    Conegx->irq = client->irq;
+    Conegx->irq  = client->irq;
 
-    /* Initialize Regmap */
+    /* Initialize Regmap (devm-managed) */
     Conegx->regmap = devm_regmap_init_i2c(client, &ConegxRegmap);
+    if (IS_ERR(Conegx->regmap)) {
+        dev_err(Conegx->dev, "conegx: regmap init failed: %ld\n", PTR_ERR(Conegx->regmap));
+        return PTR_ERR(Conegx->regmap);
+    }
 
+    /* IRQ chip descriptor name must be set before attaching to gpiochip */
     Conegx->irq_chip.name = dev_name(Conegx->dev);
 
     /* GPIO -----------------------------------------------------------------*/
-    Conegx->chip.label = client->name;
-    Conegx->chip.parent = &client->dev;
-    Conegx->chip.owner = THIS_MODULE;
-    Conegx->chip.get_direction = conegx_get_direction;
-    Conegx->chip.get = conegx_get_gpio;
-    Conegx->chip.set = set_gpio;
-    Conegx->chip.direction_input = conegx_direction_input;
+    Conegx->chip.label            = client->name;
+    Conegx->chip.parent           = &client->dev;
+    Conegx->chip.owner            = THIS_MODULE;
+    Conegx->chip.get_direction    = conegx_get_direction;
+    Conegx->chip.get              = conegx_get_gpio;
+    Conegx->chip.set              = set_gpio;
+    Conegx->chip.direction_input  = conegx_direction_input;
     Conegx->chip.direction_output = conegx_direction_output;
-    Conegx->chip.base = -1;
-    Conegx->chip.names = conegx_gpio_names;
-    Conegx->chip.ngpio = NUMBER_OF_CONEGX_GPIOS;
-    Conegx->chip.can_sleep = true;
+    Conegx->chip.base             = -1;
+    Conegx->chip.names            = conegx_gpio_names;
+    Conegx->chip.ngpio            = NUMBER_OF_CONEGX_GPIOS;
+    Conegx->chip.can_sleep        = true;
 
     Ret = devm_gpiochip_add_data(Conegx->dev, &Conegx->chip, Conegx);
-    if(Ret < 0) 
-    {
-        printk(KERN_ERR "conegx: can't add GPIO chip\n");
-        return Ret;
+    if (Ret < 0) {
+        dev_err(Conegx->dev, "conegx: can't add GPIO chip (%d)\n", Ret);
+        return Ret; /* devm will unwind previous resources */
     }
 
     mutex_init(&Conegx->lock);
 
-    /* add Data to I2c and GPIO */
+    /* tie I2C client to our state */
     i2c_set_clientdata(client, Conegx);
 
-    /* IRQ -----------------------------------------------------------------*/
-
+    /* IRQ ------------------------------------------------------------------*/
     init_waitqueue_head(&IrSleepingQeue);
 
     /**
@@ -1663,41 +1680,32 @@ static int conegx_probe(struct i2c_client *client) {
      * @return 0 if successfull, other value in case of error.
      */
     Ret = devm_request_threaded_irq(
-        Conegx->chip.parent, //dev
-        Conegx->irq,         //irq
-        NULL,                //handler
-        conegx_irq,          //thread_fn
-        IrqFlags,            //irqflags
-        "conegxirq",         //devname
-        Conegx);             //dev_id
-
-    if(Ret)
-    {
-        dev_err(
-            Conegx->dev, 
-            "conegx: unable to request IRQ#%d: %d\n",
-            Conegx->irq, 
-            Ret);
-
-        return Ret;
-    }   
+        Conegx->chip.parent, /* dev */
+        Conegx->irq,         /* irq */
+        NULL,                /* handler */
+        conegx_irq,          /* thread_fn */
+        IrqFlags,            /* irqflags */
+        "conegxirq",         /* devname */
+        Conegx               /* dev_id */
+    );
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: unable to request IRQ#%d: %d\n", Conegx->irq, Ret);
+        return Ret; /* devm will unwind */
+    }
     pr_debug("conegx: registered IRQ # %d\n", Conegx->irq);
-    
-    /* Setting up GPIO IRQ */
+
+    /* Attach nested irqchip to gpiochip */
     Err = gpiochip_irqchip_add_nested(
         &Conegx->chip,
         &Conegx->irq_chip,
         0,
         handle_edge_irq,
         IRQ_TYPE_NONE);
-
     Conegx->chip.irq.threaded = true;
 
-    if(Err) 
-    {
-        dev_err(Conegx->dev,
-                "could not connect irqchip to gpiochip: %d\n", Err);
-        return Err;
+    if (Err) {
+        dev_err(Conegx->dev, "conegx: could not connect irqchip to gpiochip: %d\n", Err);
+        return Err; /* devm will unwind */
     }
 
     gpiochip_set_nested_irqchip(
@@ -1707,178 +1715,260 @@ static int conegx_probe(struct i2c_client *client) {
 
     /* PROCFS ---------------------------------------------------------------*/
     ProcfsParent = proc_mkdir("conegx", NULL);
-    if(ProcfsParent == NULL) 
-    {
-        printk(KERN_ERR "conegx: Error creating /proc/conegx!\n");
-        return -ENOMEM;
-    }
-
-    ProcfsRegisters = proc_mkdir("registers", ProcfsParent);
-    if (ProcfsRegisters == NULL) 
-    {
-        printk(KERN_ERR "conegx: Error creating /proc/conegx/registers!\n");
-        return -ENOMEM;
+    if (!ProcfsParent) {
+        dev_err(Conegx->dev, "conegx: Error creating /proc/conegx!\n");
+        Ret = -ENOMEM;
+        goto err_no_procfs; /* nothing to clean here other than returning */
     }
 
     /* Creating procfs entries under "/proc/conegx/" */
-    proc_create("fwversion", 0444, ProcfsParent, &proc_fops_fwversion);
-    proc_create("tstbuttonlock", 0666, ProcfsParent, &proc_fops_tstbuttonlock);
-    proc_create("rstbuttonlock", 0666, ProcfsParent, &proc_fops_rstbuttonlock);
-    proc_create("resetmsp", 0444, ProcfsParent, &proc_fops_resetmsp);
-    proc_create("maintenance", 0666, ProcfsParent, &proc_fops_maintenance);
-    proc_create("resetleaflet", 0222, ProcfsParent, &proc_fops_resetleaflet);
+    proc_create("fwversion",      0444, ProcfsParent,    &proc_fops_fwversion);
+    proc_create("tstbuttonlock",  0666, ProcfsParent,    &proc_fops_tstbuttonlock);
+    proc_create("rstbuttonlock",  0666, ProcfsParent,    &proc_fops_rstbuttonlock);
+    proc_create("resetmsp",       0444, ProcfsParent,    &proc_fops_resetmsp);
+    proc_create("resetleaflet",   0222, ProcfsParent,    &proc_fops_resetleaflet);
+    proc_create("maintenance",    0666, ProcfsParent,    &proc_fops_maintenance);
+
+    procfs_parent_created = true;
+
+    ProcfsRegisters = proc_mkdir("registers", ProcfsParent);
+    if (!ProcfsRegisters) {
+        dev_err(Conegx->dev, "conegx: Error creating /proc/conegx/registers!\n");
+        Ret = -ENOMEM;
+        goto err_procfs;
+    }
 
     /* Creating procfs entries under "/proc/conegx/registers" */
-    proc_create("input", 0444, ProcfsRegisters, &proc_fops_reg_input);
-    proc_create("relay", 0444, ProcfsRegisters, &proc_fops_reg_relay);
-    proc_create("led_0", 0444, ProcfsRegisters, &proc_fops_reg_led_0);
-    proc_create("led_1", 0444, ProcfsRegisters, &proc_fops_reg_led_1);
+    proc_create("input",  0444, ProcfsRegisters, &proc_fops_reg_input);
+    proc_create("relay",  0444, ProcfsRegisters, &proc_fops_reg_relay);
+    proc_create("led_0",  0444, ProcfsRegisters, &proc_fops_reg_led_0);
+    proc_create("led_1",  0444, ProcfsRegisters, &proc_fops_reg_led_1);
     proc_create("status", 0444, ProcfsRegisters, &proc_fops_reg_status);
+
+    procfs_created = true;
 
     /* LEDS -----------------------------------------------------------------*/
     Ret = setup_leds(client);
-    if (Ret)
-    {
-        printk(KERN_ERR "conegx: Error setting up leds!\n");
-        return -1;
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: Error setting up LEDs!\n");
+        Ret = -EIO;
+        goto err_procfs;
     }
+    leds_ok = true;
 
+    /* Char device stack ----------------------------------------------------*/
     Ret = alloc_chrdev_region(&ConDevNr, 0, 1, "conegx_device");
-    if(Ret)
-    {
-        printk(KERN_ERR "conegx: Error registering char device number!\n");
-        return Ret;
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: Error registering char device number!\n");
+        goto err_leds;
     }
+    chrdev_region_ok = true;
 
-    /* Anmeldeobjekt reservieren */
-    ConDriverObject = cdev_alloc(); 
-    if(ConDriverObject == NULL)
-    {
-        unregister_chrdev_region(ConDevNr, 1);
-        return -EIO;
+    /* Allocate cdev */
+    ConDriverObject = cdev_alloc();
+    if (!ConDriverObject) {
+        Ret = -ENOMEM;
+        dev_err(Conegx->dev, "conegx: cdev_alloc failed\n");
+        goto err_chrdev_region;
     }
 
     ConDriverObject->owner = THIS_MODULE;
-    ConDriverObject->ops = &fops_devfile;
+    ConDriverObject->ops   = &fops_devfile;
 
     Ret = cdev_add(ConDriverObject, ConDevNr, 1);
-    if(Ret)
-    {
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: cdev_add failed (%d)\n", Ret);
         kobject_put(&ConDriverObject->kobj);
-        return -1;
+        ConDriverObject = NULL;
+        goto err_chrdev_region;
     }
+    cdev_added = true;
 
     ConDevClass = class_create(THIS_MODULE, "conegx_class");
-    if(IS_ERR(ConDevClass)) 
-    {
-        pr_err("conegx_class: no udev support\n");
-        kobject_put(&ConDriverObject->kobj);
-        return -1;
+    if (IS_ERR(ConDevClass)) {
+        Ret = PTR_ERR(ConDevClass);
+        ConDevClass = NULL;
+        dev_err(Conegx->dev, "conegx: class_create failed (%d)\n", Ret);
+        goto err_cdev_add;
     }
+    class_created = true;
 
     ConDevice = device_create(ConDevClass, NULL, ConDevNr, NULL, "%s", "conegx");
-    if(IS_ERR(ConDevice))
-    {
-        class_destroy(ConDevClass);
-        return -1;
+    if (IS_ERR(ConDevice)) {
+        Ret = PTR_ERR(ConDevice);
+        ConDevice = NULL;
+        dev_err(Conegx->dev, "conegx: device_create failed (%d)\n", Ret);
+        goto err_class_create;
     }
+    device_created = true;
 
-    /* Reading Device Description Register to identify chip*/
-    /* TODO: clean up in case of error! */
+    /* Reading Device Description Register to identify chip */
     Ret = regmap_read(Conegx->regmap, DEVICE_DESCRIPTION, &Val);
-    if(Ret) 
-    {
-        printk(KERN_ERR "conegx: can't read DEVICE_DESCRIPTION Register\n");
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: can't read DEVICE_DESCRIPTION register (%d)\n", Ret);
         reset_MSP430();
-        return Ret;
+        goto err_device_stack;
     }
 
-    if(Val != 0x94) 
-    {
-        printk(KERN_ERR "conegx: DEVICE_DESCRIPTION wrong: 0x%x\n", Val);
-        return -1;
-    }    
+    if (Val != 0x94) {
+        dev_err(Conegx->dev, "conegx: DEVICE_DESCRIPTION wrong: 0x%x\n", Val);
+        Ret = -ENODEV;
+        goto err_device_stack;
+    }
     pr_debug("conegx: Received valid DEVICE_DESCRIPTION 0x94!\n");
 
     /* Read registers the first time */
     Ret = conegx_getRegister();
-    if(Ret) 
-    {
-        printk(KERN_ERR "conegx: Error getting Device Data!\n");
-        return Ret;
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: Error getting Device Data! (%d)\n", Ret);
+        goto err_device_stack;
     }
 
-    /* Set OS Ready flag ----------------------------------------------------*/   
+    /* Set OS Ready flag ----------------------------------------------------*/
     pr_debug("conegx: Setting OS Ready Flag\n");
     Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x1);
-    if (Ret) 
-    {
-        printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: Error writing SET_OS_READY (%d)\n", Ret);
         reset_MSP430();
-        return Ret;
+        goto err_device_stack;
     }
 
     /* Turn On Power LED */
     pr_debug("conegx: Turning On Power LED\n");
     Ret = regmap_write(Conegx->regmap, SET_LED_PORT_0, BIT_LED_PWR);
-    if (Ret)
-    {
-        printk(KERN_ERR "conegx: Error turning on Power LED\n");
+    if (Ret) {
+        dev_err(Conegx->dev, "conegx: Error turning on Power LED (%d)\n", Ret);
         reset_MSP430();
-        return Ret;
+        goto err_device_stack;
     }
-    
-    pr_info("conegx: Device Initialzed successfully\n");
 
+    pr_info("conegx: Device initialized successfully\n");
     return 0;
+
+/* ---------- ordered cleanup (reverse order) ---------- */
+
+err_device_stack:
+    if (device_created) {
+        device_destroy(ConDevClass, ConDevNr);
+        device_created = false;
+    }
+err_class_create:
+    if (class_created) {
+        class_destroy(ConDevClass);
+        ConDevClass = NULL;
+        class_created = false;
+    }
+err_cdev_add:
+    if (cdev_added) {
+        cdev_del(ConDriverObject);
+        cdev_added = false;
+    } else if (ConDriverObject) {
+        /* cdev_add never succeeded, drop the allocation */
+        kobject_put(&ConDriverObject->kobj);
+    }
+    ConDriverObject = NULL;
+err_chrdev_region:
+    if (chrdev_region_ok) {
+        unregister_chrdev_region(ConDevNr, 1);
+        chrdev_region_ok = false;
+    }
+err_leds:
+    if (leds_ok) {
+        unregister_leds(NR_OF_LEDS);
+        leds_ok = false;
+    }
+err_procfs:
+    if (procfs_created)
+    {
+        if (ProcfsRegisters) {
+            remove_proc_entry("input",     ProcfsRegisters);
+            remove_proc_entry("relay",     ProcfsRegisters);
+            remove_proc_entry("led_0",     ProcfsRegisters);
+            remove_proc_entry("led_1",     ProcfsRegisters);
+            remove_proc_entry("status",    ProcfsRegisters);
+            remove_proc_entry("registers", ProcfsParent);
+        }
+        ProcfsRegisters = NULL;
+        procfs_created = false;
+    }
+
+    if (procfs_parent_created) 
+    {
+        if (ProcfsParent) {
+            remove_proc_entry("fwversion",      ProcfsParent);
+            remove_proc_entry("tstbuttonlock",  ProcfsParent);
+            remove_proc_entry("rstbuttonlock",  ProcfsParent);
+            remove_proc_entry("resetmsp",       ProcfsParent);
+            remove_proc_entry("resetleaflet",   ProcfsParent);
+            remove_proc_entry("maintenance",    ProcfsParent);
+        }
+        remove_proc_entry("conegx", NULL);
+        proc_remove(ProcfsParent);
+        ProcfsParent = NULL;
+        procfs_parent_created = false;
+    }
+err_no_procfs:
+    /* devm_* (kzalloc, regmap, gpiochip, irq) will be auto-cleaned on error */
+    return Ret;
 }
+
 
 /**
  * @brief Remove Function called when the module is unloaded
  */
 static int conegx_remove(struct i2c_client *client) 
 {
-    int Ret;
+    int ret;
 
-    pr_info("conegx: Removing...-> disabling OS_READY flag\n");
-    Ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
-    if(Ret) 
-    {
-        printk(KERN_ERR "conegx: Error writing to SET_OS_READY\n");
-        reset_MSP430();
+    pr_info("conegx: Removing device — clearing OS_READY\n");
+    ret = regmap_write(Conegx->regmap, SET_OS_READY, 0x0);
+    if (ret) {
+        dev_warn(Conegx->dev,
+            "conegx: failed to clear OS_READY (%d); resetting MSP430\n", ret);
     }
 
-    /* Remove proc entries */
-    remove_proc_entry("input", ProcfsRegisters);
-    remove_proc_entry("relay", ProcfsRegisters);
-    remove_proc_entry("led_0", ProcfsRegisters);
-    remove_proc_entry("led_1", ProcfsRegisters);
-    remove_proc_entry("status", ProcfsRegisters);
-    remove_proc_entry("registers", ProcfsParent);
-    remove_proc_entry("fwversion", ProcfsParent);
-    remove_proc_entry("tstbuttonlock", ProcfsParent);
-    remove_proc_entry("rstbuttonlock", ProcfsParent);
-    remove_proc_entry("resetmsp", ProcfsParent);
-    remove_proc_entry("maintenance", ProcfsParent);
-    remove_proc_entry("resetleaflet", ProcfsParent);
+    /* Remove proc entries under /proc/conegx */
+    if (ProcfsRegisters) {
+        remove_proc_entry("input",     ProcfsRegisters);
+        remove_proc_entry("relay",     ProcfsRegisters);
+        remove_proc_entry("led_0",     ProcfsRegisters);
+        remove_proc_entry("led_1",     ProcfsRegisters);
+        remove_proc_entry("status",    ProcfsRegisters);
+        remove_proc_entry("registers", ProcfsParent);
+        ProcfsRegisters = NULL;
+    }
+
+    if (ProcfsParent) {
+        remove_proc_entry("fwversion",      ProcfsParent);
+        remove_proc_entry("tstbuttonlock",  ProcfsParent);
+        remove_proc_entry("rstbuttonlock",  ProcfsParent);
+        remove_proc_entry("resetmsp",       ProcfsParent);
+        remove_proc_entry("resetleaflet",   ProcfsParent);
+        remove_proc_entry("maintenance", ProcfsParent);
+    }
+
     remove_proc_entry("conegx", NULL);
     proc_remove(ProcfsParent);
-
-    /* Free IRQ */
-    devm_free_irq(Conegx->dev, Conegx->irq, Conegx);
-
-    /* Destroy device */
+    ProcfsParent = NULL;
     unregister_leds(NR_OF_LEDS);
-    mutex_destroy(&Conegx->lock);
-    device_destroy(ConDevClass, ConDevNr);
-    class_destroy(ConDevClass);
 
-    /* Unregister char device */
-    cdev_del(ConDriverObject);
+    mutex_destroy(&Conegx->lock);
+
+    if (ConDevice)
+        device_destroy(ConDevClass, ConDevNr);
+    ConDevice = NULL;
+
+    if (ConDevClass)
+        class_destroy(ConDevClass);
+    ConDevClass = NULL;
+
+    if (ConDriverObject)
+        cdev_del(ConDriverObject);
+    ConDriverObject = NULL;
+
     unregister_chrdev_region(ConDevNr, 1);
 
     pr_debug("conegx: Device removed successfully\n");
-
     return 0;
 }
 

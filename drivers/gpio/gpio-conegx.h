@@ -2,7 +2,7 @@
  * @file gpio-conegx.h
  * @author S. Ardaya-Lieb (s.ardayalieb@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.4.1
+ * @version 1.4.2
  * 
  * @copyright: Copyrigth (c) 2021-2025
  * This program is free software: you can redistribute it and/or modify
@@ -26,12 +26,13 @@
 #include <linux/types.h>
 #include <linux/regmap.h>
 #include <linux/leds.h>
+#include <stdbool.h>
 
 #ifndef __CONEGX_DRIVER
 #define __CONEGX_DRIVER
 
 /* DIVER VERSION*/
-#define DRIVER_VERSION "1.4.1"
+#define DRIVER_VERSION "1.4.2"
 
 /* Conegx Pins */
 /** 
@@ -182,7 +183,7 @@ POWER_ON_RESET						,
 NUMBER_OF_CONEGX_IRQS               ,
 };
 /* LED */
-#define NR_OF_LEDS 9
+#define NR_OF_LEDS NUMBER_OF_CONEGX_LEDS
 #define LED_FULL 255
 
 
