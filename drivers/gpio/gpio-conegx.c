@@ -2,7 +2,7 @@
  * @file gpio-conegx.c
  * @author S. Ardaya-Lieb (s.ardayalieb@consolinno.de)
  * @brief Driver for Consolinno Conegx Module
- * @version 1.4.1
+ * @version 1.4.2
  * 
  * @copyright: Copyrigth (c) 2021 - 2025
  * This program is free software: you can redistribute it and/or modify
@@ -1463,14 +1463,13 @@ static int setup_leds(struct i2c_client *client)
         led->ldev.name = led->name;
         led->ldev.max_brightness = LED_FULL;
         led->ldev.brightness_set_blocking = conegxled_set_brightness;
-        /* Optional: led->ldev.default_trigger = NULL; */
 
         err = led_classdev_register(&client->dev, &led->ldev);
         if (err) {
             dev_err(&client->dev, "conegx: couldn't register LED %s (%d)\n",
                     led->ldev.name ? led->ldev.name : "?", err);
             unregister_leds(i); /* unregister the ones that succeeded */
-            return err;         /* return the real errno, not -1 */
+            return err;
         }
     }
 
