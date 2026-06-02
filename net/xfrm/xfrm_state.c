@@ -1244,6 +1244,9 @@ static void __xfrm_state_insert(struct xfrm_state *x)
 
 	list_add(&x->km.all, &net->xfrm.state_all);
 
+	/* Sanitize mark before store */
+	x->mark.v &= x->mark.m;
+
 	h = xfrm_dst_hash(net, &x->id.daddr, &x->props.saddr,
 			  x->props.reqid, x->props.family);
 	hlist_add_head_rcu(&x->bydst, net->xfrm.state_bydst + h);
@@ -2509,9 +2512,6 @@ int __xfrm_init_state(struct xfrm_state *x, bool init_replay, bool offload)
 
 		inner_mode = xfrm_get_mode(x->props.mode, x->props.family);
 		if (inner_mode == NULL)
-			goto error;
-
-		if (!(inner_mode->flags & XFRM_MODE_FLAG_TUNNEL))
 			goto error;
 
 		x->inner_mode = *inner_mode;

@@ -179,9 +179,11 @@ module_param(ple_window_shrink, uint, 0444);
 static unsigned int ple_window_max        = KVM_VMX_DEFAULT_PLE_WINDOW_MAX;
 module_param(ple_window_max, uint, 0444);
 
-/* Default is SYSTEM mode, 1 for host-guest mode */
+/* Default is SYSTEM mode, 1 for host-guest mode (which is BROKEN) */
 int __read_mostly pt_mode = PT_MODE_SYSTEM;
+#ifdef CONFIG_BROKEN
 module_param(pt_mode, int, S_IRUGO);
+#endif
 
 static DEFINE_STATIC_KEY_FALSE(vmx_l1d_should_flush);
 static DEFINE_STATIC_KEY_FALSE(vmx_l1d_flush_cond);
@@ -6358,6 +6360,7 @@ static void handle_external_interrupt_irqoff(struct kvm_vcpu *vcpu)
 	);
 
 	kvm_after_interrupt(vcpu);
+	vcpu->arch.at_instruction_boundary = true;
 }
 STACK_FRAME_NON_STANDARD(handle_external_interrupt_irqoff);
 
@@ -7264,6 +7267,21 @@ static int vmx_check_intercept(struct kvm_vcpu *vcpu,
 			return X86EMUL_CONTINUE;
 
 		/* FIXME: produce nested vmexit and return X86EMUL_INTERCEPTED.  */
+		break;
+
+	case x86_intercept_pause:
+		/*
+		 * PAUSE is a single-byte NOP with a REPE prefix, i.e. collides
+		 * with vanilla NOPs in the emulator.  Apply the interception
+		 * check only to actual PAUSE instructions.  Don't check
+		 * PAUSE-loop-exiting, software can't expect a given PAUSE to
+		 * exit, i.e. KVM is within its rights to allow L2 to execute
+		 * the PAUSE.
+		 */
+		if ((info->rep_prefix != REPE_PREFIX) ||
+		    !nested_cpu_has2(vmcs12, CPU_BASED_PAUSE_EXITING))
+			return X86EMUL_CONTINUE;
+
 		break;
 
 	/* TODO: check more intercepts... */

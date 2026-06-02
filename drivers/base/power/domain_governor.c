@@ -8,6 +8,7 @@
 #include <linux/pm_domain.h>
 #include <linux/pm_qos.h>
 #include <linux/hrtimer.h>
+#include <linux/cpu.h>
 #include <linux/cpuidle.h>
 #include <linux/cpumask.h>
 #include <linux/ktime.h>
@@ -135,8 +136,8 @@ static bool __default_power_down_ok(struct dev_pm_domain *pd,
 	 *
 	 * All subdomains have been powered off already at this point.
 	 */
-	list_for_each_entry(link, &genpd->master_links, master_node) {
-		struct generic_pm_domain *sd = link->slave;
+	list_for_each_entry(link, &genpd->parent_links, parent_node) {
+		struct generic_pm_domain *sd = link->child;
 		s64 sd_max_off_ns = sd->max_off_time_ns;
 
 		if (sd_max_off_ns < 0)
@@ -217,13 +218,13 @@ static bool default_power_down_ok(struct dev_pm_domain *pd)
 	}
 
 	/*
-	 * We have to invalidate the cached results for the masters, so
+	 * We have to invalidate the cached results for the parents, so
 	 * use the observation that default_power_down_ok() is not
-	 * going to be called for any master until this instance
+	 * going to be called for any parent until this instance
 	 * returns.
 	 */
-	list_for_each_entry(link, &genpd->slave_links, slave_node)
-		link->master->max_off_time_changed = true;
+	list_for_each_entry(link, &genpd->child_links, child_node)
+		link->parent->max_off_time_changed = true;
 
 	genpd->max_off_time_ns = -1;
 	genpd->max_off_time_changed = false;
@@ -254,6 +255,8 @@ static bool cpu_power_down_ok(struct dev_pm_domain *pd)
 	struct generic_pm_domain *genpd = pd_to_genpd(pd);
 	struct cpuidle_device *dev;
 	ktime_t domain_wakeup, next_hrtimer;
+	struct device *cpu_dev;
+	s64 cpu_constraint, global_constraint;
 	s64 idle_duration_ns;
 	int cpu, i;
 
@@ -264,6 +267,7 @@ static bool cpu_power_down_ok(struct dev_pm_domain *pd)
 	if (!(genpd->flags & GENPD_FLAG_CPU_DOMAIN))
 		return true;
 
+	global_constraint = pm_qos_request(PM_QOS_CPU_DMA_LATENCY);
 	/*
 	 * Find the next wakeup for any of the online CPUs within the PM domain
 	 * and its subdomains. Note, we only need the genpd->cpus, as it already
@@ -277,8 +281,16 @@ static bool cpu_power_down_ok(struct dev_pm_domain *pd)
 			if (ktime_before(next_hrtimer, domain_wakeup))
 				domain_wakeup = next_hrtimer;
 		}
+
+		cpu_dev = get_cpu_device(cpu);
+		if (cpu_dev) {
+			cpu_constraint = dev_pm_qos_raw_resume_latency(cpu_dev);
+			if (cpu_constraint < global_constraint)
+				global_constraint = cpu_constraint;
+		}
 	}
 
+	global_constraint *= NSEC_PER_USEC;
 	/* The minimum idle duration is from now - until the next wakeup. */
 	idle_duration_ns = ktime_to_ns(ktime_sub(domain_wakeup, ktime_get()));
 	if (idle_duration_ns <= 0)
@@ -291,8 +303,10 @@ static bool cpu_power_down_ok(struct dev_pm_domain *pd)
 	 */
 	i = genpd->state_idx;
 	do {
-		if (idle_duration_ns >= (genpd->states[i].residency_ns +
-		    genpd->states[i].power_off_latency_ns)) {
+		if ((idle_duration_ns >= (genpd->states[i].residency_ns +
+		    genpd->states[i].power_off_latency_ns)) &&
+		    (global_constraint >= (genpd->states[i].power_on_latency_ns +
+		    genpd->states[i].power_off_latency_ns))) {
 			genpd->state_idx = i;
 			return true;
 		}
