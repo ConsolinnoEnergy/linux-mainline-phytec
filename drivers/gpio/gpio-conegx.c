@@ -68,6 +68,17 @@ static int reg_to_user(
     unsigned char *conegx_buffer, 
     loff_t *offset);
 
+static inline int conegx_child_irq_from_gpio(unsigned int gpio)
+{
+#if CONEGX_GPIO_IRQ_SUPPORTED
+	if (!Conegx || !Conegx->chip.irq.domain)
+		return 0;
+	return irq_find_mapping(Conegx->chip.irq.domain, gpio);
+#else
+	return 0;
+#endif
+}
+
 /*---------------GPIO Functions---------------*/
 static int conegx_get_direction(struct gpio_chip *chip, unsigned offset);
 static int conegx_get_gpio(struct gpio_chip *chip, unsigned offset);
@@ -1204,13 +1215,13 @@ static irqreturn_t conegx_irq(int irq, void *data)
             mutex_unlock(&Conegx->lock);
         }
    
+#if CONEGX_GPIO_IRQ_SUPPORTED
         /* Trigger nested IRQ for GPIOS */
-        ChildIRQ = irq_find_mapping(Conegx->chip.irq.domain, GpioNumber);
+        ChildIRQ = conegx_child_irq_from_gpio(GpioNumber);
+        pr_debug("conegx: handling childirq %d\n", ChildIRQ);
         if (ChildIRQ > 0)
-        {
-            pr_debug("conegx: handling childirq %d\n", ChildIRQ);
             handle_nested_irq(ChildIRQ);
-        }
+#endif
     }
     /* WATCHDOG INTERRUPT -------------------*/
     else if(IrqNumber == WATCHDOG_RESET)
@@ -1269,6 +1280,11 @@ static irqreturn_t conegx_irq(int irq, void *data)
         mutex_lock(&Conegx->lock);
         Conegx->InputPortBuffer &= ~(BIT_RESET_BUTTON);
         mutex_unlock(&Conegx->lock);
+#if CONEGX_GPIO_IRQ_SUPPORTED
+        ChildIRQ = conegx_child_irq_from_gpio(GpioNumber);
+        if (ChildIRQ > 0)
+            handle_nested_irq(ChildIRQ);
+#endif
     }
     else if(IrqNumber == RESET_BUTTON_RELEASED)
     {
@@ -1276,6 +1292,11 @@ static irqreturn_t conegx_irq(int irq, void *data)
         mutex_lock(&Conegx->lock);
         Conegx->InputPortBuffer |= BIT_RESET_BUTTON;
         mutex_unlock(&Conegx->lock);
+#if CONEGX_GPIO_IRQ_SUPPORTED
+        ChildIRQ = conegx_child_irq_from_gpio(GpioNumber);
+        if (ChildIRQ > 0)
+            handle_nested_irq(ChildIRQ);
+#endif
     }
     else if(IrqNumber == TEST_BUTTON_PRESSED)
     {
@@ -1283,6 +1304,11 @@ static irqreturn_t conegx_irq(int irq, void *data)
         mutex_lock(&Conegx->lock);
         Conegx->InputPortBuffer &= ~(BIT_TEST_BUTTON);
         mutex_unlock(&Conegx->lock);
+#if CONEGX_GPIO_IRQ_SUPPORTED
+        ChildIRQ = conegx_child_irq_from_gpio(GpioNumber);
+        if (ChildIRQ > 0)
+            handle_nested_irq(ChildIRQ);
+#endif        
     }
     else if(IrqNumber == TEST_BUTTON_RELEASED)
     {
@@ -1290,6 +1316,11 @@ static irqreturn_t conegx_irq(int irq, void *data)
         mutex_lock(&Conegx->lock);
         Conegx->InputPortBuffer |= BIT_TEST_BUTTON;
         mutex_unlock(&Conegx->lock);
+#if CONEGX_GPIO_IRQ_SUPPORTED
+        ChildIRQ = conegx_child_irq_from_gpio(GpioNumber);
+        if (ChildIRQ > 0)
+            handle_nested_irq(ChildIRQ);
+#endif
     }
     else if(IrqNumber >= NUMBER_OF_CONEGX_IRQS)
     {
