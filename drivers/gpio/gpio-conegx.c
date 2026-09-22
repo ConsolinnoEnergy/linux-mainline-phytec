@@ -37,6 +37,8 @@
 #include <linux/regmap.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
+#include <linux/version.h>
+
 
 #define ldev_to_led(c) container_of(c, struct conegx_led, ldev)
 
@@ -457,6 +459,58 @@ static struct file_operations fops_devfile = {
 };
 
 /*---------------PROCFS-------------------------------------------------------*/
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+
+static struct proc_ops proc_fops_tstbuttonlock = {
+    .proc_read  = read_proc_tstbuttonlock,
+    .proc_write = write_proc_tstbuttonlock,
+};
+
+static struct proc_ops proc_fops_rstbuttonlock = {
+    .proc_read  = read_proc_rstbuttonlock,
+    .proc_write = write_proc_rstbuttonlock,
+};
+
+static struct proc_ops proc_fops_fwversion = {
+    .proc_read = read_proc_fwversion,
+};
+
+static struct proc_ops proc_fops_resetmsp = {
+    .proc_read = read_proc_resetmsp,
+};
+
+static struct proc_ops proc_fops_maintenance = {
+    .proc_read  = read_proc_maintenancemode,
+    .proc_write = write_proc_maintenancemode,
+};
+
+static struct proc_ops proc_fops_resetleaflet = {
+    .proc_write = write_proc_resetleaflet,
+};
+
+static struct proc_ops proc_fops_reg_input = {
+    .proc_read = read_proc_reg_input,
+};
+
+static struct proc_ops proc_fops_reg_relay = {
+    .proc_read = read_proc_reg_relay,
+};
+
+static struct proc_ops proc_fops_reg_led_0 = {
+    .proc_read = read_proc_reg_led_0,
+};
+
+static struct proc_ops proc_fops_reg_led_1 = {
+    .proc_read = read_proc_reg_led_1,
+};
+
+static struct proc_ops proc_fops_reg_status = {
+    .proc_read = read_proc_reg_status,
+};
+
+#else // LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+
 /**
  * @brief File Operation Struct for /proc/conegx/tstbuttonlock
  */
@@ -547,6 +601,8 @@ static struct file_operations proc_fops_reg_status = {
     .owner = THIS_MODULE,
     .read = read_proc_reg_status,
 };
+
+#endif // LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
 
 /**
  * @brief Read Function  for /proc/conegx/fwversion
@@ -1150,8 +1206,11 @@ static irqreturn_t conegx_irq(int irq, void *data)
    
         /* Trigger nested IRQ for GPIOS */
         ChildIRQ = irq_find_mapping(Conegx->chip.irq.domain, GpioNumber);
-        pr_debug("conegx: handling childirq %d\n", ChildIRQ);
-        handle_nested_irq(ChildIRQ);
+        if (ChildIRQ > 0)
+        {
+            pr_debug("conegx: handling childirq %d\n", ChildIRQ);
+            handle_nested_irq(ChildIRQ);
+        }
     }
     /* WATCHDOG INTERRUPT -------------------*/
     else if(IrqNumber == WATCHDOG_RESET)
@@ -1659,6 +1718,15 @@ static int conegx_probe(struct i2c_client *client) {
     Conegx->chip.ngpio            = NUMBER_OF_CONEGX_GPIOS;
     Conegx->chip.can_sleep        = true;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+    Conegx->irq_chip.flags = IRQCHIP_IMMUTABLE;
+    Conegx->chip.irq.chip = &Conegx->irq_chip;
+    Conegx->chip.irq.default_type = IRQ_TYPE_NONE;
+    Conegx->chip.irq.handler = handle_bad_irq;
+    Conegx->chip.irq.num_parents = 1;
+    Conegx->chip.irq.parents = &Conegx->irq;
+#endif
+
     Ret = devm_gpiochip_add_data(Conegx->dev, &Conegx->chip, Conegx);
     if (Ret < 0) {
         dev_err(Conegx->dev, "conegx: can't add GPIO chip (%d)\n", Ret);
@@ -1710,6 +1778,9 @@ static int conegx_probe(struct i2c_client *client) {
     pr_debug("conegx: registered IRQ # %d\n", Conegx->irq);
 
     /* Attach nested irqchip to gpiochip */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+    Conegx->chip.irq.threaded = true;
+#else
     Err = gpiochip_irqchip_add_nested(
         &Conegx->chip,
         &Conegx->irq_chip,
@@ -1719,14 +1790,17 @@ static int conegx_probe(struct i2c_client *client) {
     Conegx->chip.irq.threaded = true;
 
     if (Err) {
-        dev_err(Conegx->dev, "conegx: could not connect irqchip to gpiochip: %d\n", Err);
-        return Err; /* devm will unwind */
+        dev_err(Conegx->dev,
+               "conegx: could not connect irqchip to gpiochip: %d\n",
+               Err);
+        return Err;
     }
 
     gpiochip_set_nested_irqchip(
         &Conegx->chip,
         &Conegx->irq_chip,
         Conegx->irq);
+#endif
 
     /* PROCFS ---------------------------------------------------------------*/
     ProcfsParent = proc_mkdir("conegx", NULL);
@@ -1798,7 +1872,12 @@ static int conegx_probe(struct i2c_client *client) {
     }
     cdev_added = true;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+    ConDevClass = class_create("conegx_class");
+#else
     ConDevClass = class_create(THIS_MODULE, "conegx_class");
+#endif
+
     if (IS_ERR(ConDevClass)) {
         Ret = PTR_ERR(ConDevClass);
         ConDevClass = NULL;
@@ -1938,7 +2017,11 @@ err_no_procfs:
 /**
  * @brief Remove Function called when the module is unloaded
  */
-static int conegx_remove(struct i2c_client *client) 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+static void conegx_remove(struct i2c_client *client)
+#else
+static int conegx_remove(struct i2c_client *client)
+#endif
 {
     int ret;
 
@@ -1994,7 +2077,12 @@ static int conegx_remove(struct i2c_client *client)
     unregister_chrdev_region(ConDevNr, 1);
 
     pr_debug("conegx: Device removed successfully\n");
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+    return;
+#else
     return 0;
+#endif
 }
 
 static int reset_MSP430(void)
@@ -2125,6 +2213,20 @@ static const struct of_device_id conegx_of_match_table[] = {
     {/* sentinel */}};
 MODULE_DEVICE_TABLE(of, conegx_of_match_table);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+
+static struct i2c_driver conegx_driver = {
+    .driver = {
+        .name = "conegx",
+        .of_match_table = conegx_of_match_table,
+    },
+    .probe = conegx_probe,
+    .remove = conegx_remove,
+    .id_table = conegx_id_table,
+};
+
+#else
+
 static struct i2c_driver conegx_driver = {
     .driver = {
         .name = "conegx",
@@ -2134,6 +2236,9 @@ static struct i2c_driver conegx_driver = {
     .remove = conegx_remove,
     .id_table = conegx_id_table,
 };
+
+#endif
+
 module_i2c_driver(conegx_driver);
 
 MODULE_AUTHOR("Samuel Ardaya-Lieb <s.ardayalieb@consolinno.de>");
