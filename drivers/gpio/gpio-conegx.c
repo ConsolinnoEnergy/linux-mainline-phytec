@@ -1749,6 +1749,7 @@ static int conegx_probe(struct i2c_client *client) {
     Conegx->chip.ngpio            = NUMBER_OF_CONEGX_GPIOS;
     Conegx->chip.can_sleep        = true;
 
+#if CONEGX_GPIO_IRQ_SUPPORTED
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
     Conegx->irq_chip.flags = IRQCHIP_IMMUTABLE;
     Conegx->chip.irq.chip = &Conegx->irq_chip;
@@ -1756,6 +1757,7 @@ static int conegx_probe(struct i2c_client *client) {
     Conegx->chip.irq.handler = handle_bad_irq;
     Conegx->chip.irq.num_parents = 1;
     Conegx->chip.irq.parents = &Conegx->irq;
+#endif
 #endif
 
     Ret = devm_gpiochip_add_data(Conegx->dev, &Conegx->chip, Conegx);
@@ -1809,6 +1811,7 @@ static int conegx_probe(struct i2c_client *client) {
     pr_debug("conegx: registered IRQ # %d\n", Conegx->irq);
 
     /* Attach nested irqchip to gpiochip */
+#if CONEGX_GPIO_IRQ_SUPPORTED
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
     Conegx->chip.irq.threaded = true;
 #else
@@ -1832,7 +1835,7 @@ static int conegx_probe(struct i2c_client *client) {
         &Conegx->irq_chip,
         Conegx->irq);
 #endif
-
+#endif
     /* PROCFS ---------------------------------------------------------------*/
     ProcfsParent = proc_mkdir("conegx", NULL);
     if (!ProcfsParent) {
