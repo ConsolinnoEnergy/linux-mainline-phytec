@@ -178,3 +178,8 @@ sphinx_*/
 
 # Rust analyzer configuration
 /rust-project.json
+
+# local install directory
+kernel-install
+build-kernel.sh
+

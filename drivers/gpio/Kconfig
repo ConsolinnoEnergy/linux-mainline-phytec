@@ -1181,6 +1181,12 @@ config GPIO_PCA9570
 	  To compile this driver as a module, choose M here: the module will
 	  be called gpio-pca9570.
 
+config GPIO_CONEGX
+	tristate "Conegx Gpio Expander and Power watch"
+	select GPIOLIB_IRQCHIP
+	help
+	  Consolinno Energy Conegx Module.
+
 config GPIO_PCF857X
 	tristate "PCF857x, PCA{85,96}7x, and MAX732[89] I2C GPIO expanders"
 	select GPIOLIB_IRQCHIP
